@@ -1,40 +1,43 @@
 import streamlit as st
 import pandas as pd
 
-# Inisialisasi data produk
+# ==================== INISIALISASI DATA ====================
 if "products" not in st.session_state:
     st.session_state.products = [
         {"sku": "SKU001", "name": "Produk A", "owner": "Nizar", "reseller_price": 50000, "retail_price": 60000, "stock": 10},
         {"sku": "SKU002", "name": "Produk B", "owner": "Andi", "reseller_price": 70000, "retail_price": 85000, "stock": 5},
+        {"sku": "SKU003", "name": "Produk C", "owner": "Budi", "reseller_price": 45000, "retail_price": 55000, "stock": 8},
     ]
 
-# Inisialisasi keranjang
 if "cart" not in st.session_state:
     st.session_state.cart = []
 
+st.set_page_config(page_title="Aplikasi Kasir", page_icon="🛒", layout="wide")
 st.title("🛒 Aplikasi Kasir")
 
-# ----------------- DAFTAR PRODUK -----------------
-st.header("Daftar Produk")
-for product in st.session_state.products:
-    with st.container():
-        st.write(f"**SKU:** {product['sku']}")
-        st.write(f"**Nama:** {product['name']}")
-        st.write(f"**Owner:** {product['owner']}")
-        st.write(f"**Harga Reseller:** Rp{product['reseller_price']:,}")
-        st.write(f"**Harga Ritel:** Rp{product['retail_price']:,}")
-        st.write(f"**Stok:** {product['stock']}")
+col_produk, col_cart = st.columns([2, 1])
 
-        col1, col2 = st.columns([1, 2])
-        with col1:
+# ==================== DAFTAR PRODUK ====================
+with col_produk:
+    st.subheader("📦 Daftar Produk")
+    df = pd.DataFrame(st.session_state.products)
+    st.dataframe(df, hide_index=True, use_container_width=True)
+
+    for product in st.session_state.products:
+        with st.expander(f"{product['sku']} - {product['name']} (Stok: {product['stock']})"):
+            st.write(f"**Owner:** {product['owner']}")
+            st.write(f"**Harga Reseller:** Rp{product['reseller_price']:,}")
+            st.write(f"**Harga Ritel:** Rp{product['retail_price']:,}")
+            st.write(f"**Stok Tersedia:** {product['stock']}")
+
             qty = st.number_input(
-                f"Qty {product['sku']}", 
+                f"Jumlah {product['sku']}", 
                 min_value=1, 
-                max_value=product['stock'], 
+                max_value=product['stock'] if product['stock'] > 0 else 1, 
                 value=1, 
+                step=1, 
                 key=f"qty_{product['sku']}"
             )
-        with col2:
             if st.button(f"Tambah {product['name']} ke Keranjang", key=f"add_{product['sku']}"):
                 if product["stock"] >= qty:
                     # cek apakah produk sudah ada di keranjang
@@ -55,35 +58,32 @@ for product in st.session_state.products:
                 else:
                     st.error("Stok tidak mencukupi!")
 
-st.divider()
+# ==================== KERANJANG ====================
+with col_cart:
+    st.subheader("🛍️ Keranjang Belanja")
 
-# ----------------- KERANJANG -----------------
-st.header("Keranjang Belanja")
-
-if len(st.session_state.cart) == 0:
-    st.info("Keranjang kosong")
-else:
-    total = 0
-    for item in st.session_state.cart:
-        subtotal = item["price"] * item["qty"]
-        total += subtotal
-        col1, col2, col3 = st.columns([3, 1, 1])
-        with col1:
-            st.write(f"{item['name']} (x{item['qty']}) - Rp{item['price']:,}/item")
-            st.write(f"Subtotal: Rp{subtotal:,}")
-        with col2:
+    if len(st.session_state.cart) == 0:
+        st.info("Keranjang masih kosong")
+    else:
+        total = 0
+        for item in st.session_state.cart:
+            subtotal = item["price"] * item["qty"]
+            total += subtotal
+            st.write(f"**{item['name']}** (x{item['qty']})")
+            st.write(f"Harga: Rp{item['price']:,} | Subtotal: Rp{subtotal:,}")
             if st.button(f"Hapus {item['sku']}", key=f"del_{item['sku']}"):
                 st.session_state.cart.remove(item)
                 st.rerun()
 
-    st.write(f"### 💰 Total: Rp{total:,}")
+        st.markdown("---")
+        st.write(f"### 💰 Total Belanja: Rp{total:,}")
 
-    if st.button("Checkout"):
-        # Kurangi stok produk
-        for item in st.session_state.cart:
-            for product in st.session_state.products:
-                if product["sku"] == item["sku"]:
-                    product["stock"] -= item["qty"]
-        st.session_state.cart = []
-        st.success("Checkout berhasil! Stok sudah diperbarui.")
-        st.rerun()
+        if st.button("✅ Checkout"):
+            # Kurangi stok produk sesuai keranjang
+            for item in st.session_state.cart:
+                for product in st.session_state.products:
+                    if product["sku"] == item["sku"]:
+                        product["stock"] -= item["qty"]
+            st.session_state.cart = []
+            st.success("Checkout berhasil! Stok diperbarui.")
+            st.rerun()
