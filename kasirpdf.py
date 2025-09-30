@@ -111,6 +111,7 @@ def export_pdf(df):
     return buffer.getvalue()
 
 # ----------------- MENU KASIR -----------------
+# ----------------- MENU KASIR -----------------
 if menu == "Kasir":
     st.title("🛒 Kasir")
 
@@ -120,20 +121,28 @@ if menu == "Kasir":
         st.subheader("Pilih Produk")
         for product in st.session_state.products:
             with st.container():
-                if product["image"]:
-                    st.image(product["image"], width=150)
-                st.write(f"**{product['name']}**")
-                st.write(f"Harga: Rp{product['retail_price']:,}")
-                st.write(f"Stok: {product['stock']}")
-                qty = st.number_input(
-                    f"Qty {product['sku']}",
-                    min_value=1,
-                    max_value=product["stock"],
-                    value=1,
-                    key=f"qty_{product['sku']}"
-                )
-                if st.button(f"Tambah {product['sku']}", key=f"btn_{product['sku']}"):
-                    add_to_cart(product, qty)
+                col1, col2 = st.columns([1, 2])  # gambar kiri, detail kanan
+                with col1:
+                    if product["image"]:
+                        st.image(product["image"], width=120)
+                    else:
+                        st.write("No Image")
+
+                with col2:
+                    st.write(f"**{product['name']}**")
+                    st.write(f"SKU: {product['sku']}")
+                    st.write(f"Harga: Rp{product['retail_price']:,}")
+                    st.write(f"Stok: {product['stock']}")
+                    qty = st.number_input(
+                        f"Qty {product['sku']}",
+                        min_value=1,
+                        max_value=product["stock"],
+                        value=1,
+                        key=f"qty_{product['sku']}"
+                    )
+                    if st.button(f"Tambah ke Keranjang ({product['sku']})", key=f"btn_{product['sku']}"):
+                        add_to_cart(product, qty)
+            st.markdown("---")
 
     with col_right:
         st.subheader("Keranjang")
