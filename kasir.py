@@ -1,218 +1,251 @@
 import streamlit as st
 import pandas as pd
-import os
-from datetime import datetime
+import base64
+from io import BytesIO
+from reportlab.lib.pagesizes import A4
+from reportlab.pdfgen import canvas
 
-# ==================== INISIALISASI ====================
-if "produk" not in st.session_state:
-    st.session_state.produk = pd.DataFrame(
-        columns=["SKU", "Nama", "Owner", "Harga Reseller", "Harga Ritel", "Stok", "Foto"]
-    )
+st.set_page_config(page_title="Kasir App", layout="wide")
 
-if "keranjang" not in st.session_state:
-    st.session_state.keranjang = []
+# ----------------- SESSION STATE -----------------
+if "products" not in st.session_state:
+    st.session_state.products = [
+        {
+            "sku": "SKU001",
+            "name": "Produk A",
+            "owner": "Nizar",
+            "reseller_price": 50000,
+            "retail_price": 60000,
+            "stock": 10,
+            "image": None,
+        },
+        {
+            "sku": "SKU002",
+            "name": "Produk B",
+            "owner": "Andi",
+            "reseller_price": 70000,
+            "retail_price": 85000,
+            "stock": 5,
+            "image": None,
+        },
+    ]
 
-if "histori" not in st.session_state:
-    st.session_state.histori = []
+if "cart" not in st.session_state:
+    st.session_state.cart = []
 
-# Folder foto produk
-if not os.path.exists("produk_foto"):
-    os.makedirs("produk_foto")
+if "history" not in st.session_state:
+    st.session_state.history = []  # transaksi tersimpan di sini
 
-# ==================== FUNGSI ====================
-def tambah_ke_keranjang(produk_row):
-    # jika produk sudah ada di keranjang, tambah qty
-    for item in st.session_state.keranjang:
-        if item["SKU"] == produk_row["SKU"]:
-            item["Qty"] += 1
-            return
-    # jika belum ada, masukkan baru
-    st.session_state.keranjang.append({
-        "SKU": produk_row["SKU"],
-        "Nama": produk_row["Nama"],
-        "Harga": produk_row["Harga Ritel"],
-        "Qty": 1
-    })
+# ----------------- SIDEBAR -----------------
+menu = st.sidebar.radio("📌 Menu", ["Kasir", "Daftar Produk", "Tambah Produk", "Edit Produk", "Laporan Penjualan"])
+
+# ----------------- FUNGSI -----------------
+def add_to_cart(product, qty):
+    if product["stock"] >= qty:
+        found = False
+        for item in st.session_state.cart:
+            if item["sku"] == product["sku"]:
+                item["qty"] += qty
+                found = True
+                break
+        if not found:
+            st.session_state.cart.append({
+                "sku": product["sku"],
+                "name": product["name"],
+                "price": product["retail_price"],
+                "qty": qty
+            })
+        st.success(f"{product['name']} ditambahkan ke keranjang")
+    else:
+        st.error("Stok tidak mencukupi!")
 
 def checkout():
-    total = sum([item["Harga"] * item["Qty"] for item in st.session_state.keranjang])
-    transaksi = {
-        "Waktu": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-        "Item": st.session_state.keranjang.copy(),
-        "Total": total
-    }
-    st.session_state.histori.append(transaksi)
+    if len(st.session_state.cart) == 0:
+        st.warning("Keranjang kosong!")
+        return
+    total = 0
+    transaksi = []
+    for item in st.session_state.cart:
+        subtotal = item["price"] * item["qty"]
+        total += subtotal
+        transaksi.append({
+            "sku": item["sku"],
+            "name": item["name"],
+            "qty": item["qty"],
+            "price": item["price"],
+            "subtotal": subtotal
+        })
+        # kurangi stok
+        for p in st.session_state.products:
+            if p["sku"] == item["sku"]:
+                p["stock"] -= item["qty"]
+    st.session_state.history.append(transaksi)
+    st.session_state.cart = []
+    st.success(f"Checkout berhasil! Total: Rp{total:,}")
 
-    # Kurangi stok
-    for item in st.session_state.keranjang:
-        idx = st.session_state.produk.index[st.session_state.produk["SKU"] == item["SKU"]].tolist()
-        if idx:
-            idx = idx[0]
-            st.session_state.produk.at[idx, "Stok"] -= item["Qty"]
+def export_excel(df):
+    output = BytesIO()
+    with pd.ExcelWriter(output, engine="openpyxl") as writer:
+        df.to_excel(writer, index=False, sheet_name="Laporan Penjualan")
+    return output.getvalue()
 
-    st.session_state.keranjang = []
-    st.success("Checkout berhasil! Stok sudah diperbarui.")
+def export_pdf(df):
+    buffer = BytesIO()
+    c = canvas.Canvas(buffer, pagesize=A4)
+    width, height = A4
 
-# ==================== SIDEBAR ====================
-menu = st.sidebar.radio("📌 Menu", ["Kasir", "Daftar Produk", "Histori Transaksi"])
+    c.setFont("Helvetica-Bold", 14)
+    c.drawString(200, height - 50, "Laporan Penjualan")
 
-# ==================== HALAMAN KASIR ====================
+    c.setFont("Helvetica", 10)
+    y = height - 100
+    for idx, row in df.iterrows():
+        text = f"{row['sku']} - {row['nama']} | Qty: {row['total_qty']} | Total: Rp{row['total_penjualan']:,}"
+        c.drawString(50, y, text)
+        y -= 20
+        if y < 50:
+            c.showPage()
+            y = height - 50
+    c.save()
+    return buffer.getvalue()
+
+# ----------------- MENU KASIR -----------------
 if menu == "Kasir":
     st.title("🛒 Kasir")
 
-    col1, col2 = st.columns([2, 1])
+    col_left, col_right = st.columns([3, 2])
 
-    # ----- Daftar Produk -----
-    with col1:
+    with col_left:
         st.subheader("Pilih Produk")
-        if st.session_state.produk.empty:
-            st.info("Belum ada produk. Tambahkan di menu 'Daftar Produk'.")
-        else:
-            for idx, row in st.session_state.produk.iterrows():
-                colp = st.columns([1, 2])
-                with colp[0]:
-                    if row["Foto"] and os.path.exists(row["Foto"]):
-                        st.image(row["Foto"], width=120)
-                    else:
-                        st.image("https://via.placeholder.com/120", width=120)
+        for product in st.session_state.products:
+            with st.container():
+                if product["image"]:
+                    st.image(product["image"], width=150)
+                st.write(f"**{product['name']}**")
+                st.write(f"Harga: Rp{product['retail_price']:,}")
+                st.write(f"Stok: {product['stock']}")
+                qty = st.number_input(
+                    f"Qty {product['sku']}",
+                    min_value=1,
+                    max_value=product["stock"],
+                    value=1,
+                    key=f"qty_{product['sku']}"
+                )
+                if st.button(f"Tambah {product['sku']}", key=f"btn_{product['sku']}"):
+                    add_to_cart(product, qty)
 
-                    if row["Stok"] > 0:
-                        if st.button(f"Tambah {row['Nama']}", key=f"add_{idx}"):
-                            tambah_ke_keranjang(row)
-                    else:
-                        st.error("Stok Habis")
-
-                with colp[1]:
-                    st.write(f"**{row['Nama']}**")
-                    st.write(f"SKU: {row['SKU']}")
-                    st.write(f"Harga: Rp{row['Harga Ritel']:,}")
-                    st.write(f"Stok: {row['Stok']}")
-
-                st.markdown("---")
-
-    # ----- Keranjang -----
-    with col2:
+    with col_right:
         st.subheader("Keranjang")
-        if st.session_state.keranjang:
-            total = 0
-            for i, item in enumerate(st.session_state.keranjang):
-                colk = st.columns([3,1,1])
-                with colk[0]:
-                    st.write(f"{item['Nama']} (x{item['Qty']})")
-                with colk[1]:
-                    st.write(f"Rp{item['Harga']*item['Qty']:,}")
-                with colk[2]:
-                    if st.button("❌", key=f"hapus_{i}"):
-                        st.session_state.keranjang.pop(i)
-                        st.rerun()
-                total += item["Harga"] * item["Qty"]
-
-            st.write(f"**Total: Rp{total:,}**")
-            if st.button("✅ Checkout"):
-                checkout()
-        else:
+        if len(st.session_state.cart) == 0:
             st.info("Keranjang kosong")
+        else:
+            total = 0
+            for item in st.session_state.cart:
+                subtotal = item["price"] * item["qty"]
+                total += subtotal
+                st.write(f"{item['name']} x{item['qty']} - Rp{subtotal:,}")
+                if st.button(f"Hapus {item['sku']}", key=f"del_{item['sku']}"):
+                    st.session_state.cart.remove(item)
+                    st.rerun()
+            st.write(f"### Total: Rp{total:,}")
+            if st.button("Checkout"):
+                checkout()
+                st.rerun()
 
-# ==================== HALAMAN PRODUK ====================
+# ----------------- MENU DAFTAR PRODUK -----------------
 elif menu == "Daftar Produk":
     st.title("📦 Daftar Produk")
+    df = pd.DataFrame(st.session_state.products)
+    st.dataframe(df[["sku", "name", "owner", "reseller_price", "retail_price", "stock"]])
 
-    tab1, tab2 = st.tabs(["➕ Tambah Produk", "✏️ Edit Produk"])
+# ----------------- MENU TAMBAH PRODUK -----------------
+elif menu == "Tambah Produk":
+    st.title("➕ Tambah Produk")
+    with st.form("add_product"):
+        sku = st.text_input("SKU")
+        name = st.text_input("Nama Produk")
+        owner = st.text_input("Owner")
+        reseller_price = st.number_input("Harga Reseller", min_value=0)
+        retail_price = st.number_input("Harga Ritel", min_value=0)
+        stock = st.number_input("Stok", min_value=0)
+        image_file = st.file_uploader("Upload Foto Produk", type=["jpg", "png", "jpeg"])
+        submit = st.form_submit_button("Simpan")
 
-    # ---- Tambah Produk ----
-    with tab1:
-        with st.form("form_produk"):
-            sku = st.text_input("SKU")
-            nama = st.text_input("Nama Produk")
-            owner = st.text_input("Owner")
-            harga_reseller = st.number_input("Harga Reseller", min_value=0)
-            harga_ritel = st.number_input("Harga Ritel", min_value=0)
-            stok = st.number_input("Stok", min_value=0)
-            foto = st.file_uploader("Foto Produk", type=["jpg", "png", "jpeg"])
+        if submit:
+            image_data = None
+            if image_file:
+                image_data = image_file.read()
+            st.session_state.products.append({
+                "sku": sku,
+                "name": name,
+                "owner": owner,
+                "reseller_price": reseller_price,
+                "retail_price": retail_price,
+                "stock": stock,
+                "image": image_data
+            })
+            st.success("Produk berhasil ditambahkan!")
 
-            submit = st.form_submit_button("Tambah Produk")
+# ----------------- MENU EDIT PRODUK -----------------
+elif menu == "Edit Produk":
+    st.title("✏️ Edit Produk")
+    sku_list = [p["sku"] for p in st.session_state.products]
+    selected_sku = st.selectbox("Pilih SKU", sku_list)
+    product = next((p for p in st.session_state.products if p["sku"] == selected_sku), None)
+
+    if product:
+        with st.form("edit_product"):
+            name = st.text_input("Nama Produk", product["name"])
+            owner = st.text_input("Owner", product["owner"])
+            reseller_price = st.number_input("Harga Reseller", min_value=0, value=product["reseller_price"])
+            retail_price = st.number_input("Harga Ritel", min_value=0, value=product["retail_price"])
+            stock = st.number_input("Stok", min_value=0, value=product["stock"])
+            image_file = st.file_uploader("Upload Foto Produk Baru", type=["jpg", "png", "jpeg"])
+            submit = st.form_submit_button("Update")
 
             if submit:
-                foto_path = None
-                if foto:
-                    foto_path = os.path.join("produk_foto", foto.name)
-                    with open(foto_path, "wb") as f:
-                        f.write(foto.getbuffer())
+                product["name"] = name
+                product["owner"] = owner
+                product["reseller_price"] = reseller_price
+                product["retail_price"] = retail_price
+                product["stock"] = stock
+                if image_file:
+                    product["image"] = image_file.read()
+                st.success("Produk berhasil diupdate!")
 
-                new_row = {
-                    "SKU": sku,
-                    "Nama": nama,
-                    "Owner": owner,
-                    "Harga Reseller": harga_reseller,
-                    "Harga Ritel": harga_ritel,
-                    "Stok": stok,
-                    "Foto": foto_path
-                }
-                st.session_state.produk = pd.concat(
-                    [st.session_state.produk, pd.DataFrame([new_row])],
-                    ignore_index=True
-                )
-                st.success("Produk berhasil ditambahkan!")
-
-    # ---- Edit Produk ----
-    with tab2:
-        if not st.session_state.produk.empty:
-            pilih_sku = st.selectbox("Pilih SKU", st.session_state.produk["SKU"])
-            idx = st.session_state.produk.index[st.session_state.produk["SKU"] == pilih_sku][0]
-            data_produk = st.session_state.produk.loc[idx]
-
-            with st.form("form_edit"):
-                sku_edit = st.text_input("SKU", value=data_produk["SKU"])
-                nama_edit = st.text_input("Nama Produk", value=data_produk["Nama"])
-                owner_edit = st.text_input("Owner", value=data_produk["Owner"])
-                harga_reseller_edit = st.number_input("Harga Reseller", min_value=0, value=int(data_produk["Harga Reseller"]))
-                harga_ritel_edit = st.number_input("Harga Ritel", min_value=0, value=int(data_produk["Harga Ritel"]))
-                stok_edit = st.number_input("Stok", min_value=0, value=int(data_produk["Stok"]))
-                foto_edit = st.file_uploader("Ganti Foto Produk (opsional)", type=["jpg", "png", "jpeg"])
-
-                submit_edit = st.form_submit_button("Simpan Perubahan")
-
-                if submit_edit:
-                    foto_path = data_produk["Foto"]
-                    if foto_edit:
-                        foto_path = os.path.join("produk_foto", foto_edit.name)
-                        with open(foto_path, "wb") as f:
-                            f.write(foto_edit.getbuffer())
-
-                    st.session_state.produk.at[idx, "SKU"] = sku_edit
-                    st.session_state.produk.at[idx, "Nama"] = nama_edit
-                    st.session_state.produk.at[idx, "Owner"] = owner_edit
-                    st.session_state.produk.at[idx, "Harga Reseller"] = harga_reseller_edit
-                    st.session_state.produk.at[idx, "Harga Ritel"] = harga_ritel_edit
-                    st.session_state.produk.at[idx, "Stok"] = stok_edit
-                    st.session_state.produk.at[idx, "Foto"] = foto_path
-
-                    st.success("Produk berhasil diperbarui!")
-
-    st.subheader("📋 List Produk")
-    if st.session_state.produk.empty:
-        st.info("Belum ada produk")
+# ----------------- MENU LAPORAN PENJUALAN -----------------
+elif menu == "Laporan Penjualan":
+    st.title("📊 Laporan Penjualan")
+    if len(st.session_state.history) == 0:
+        st.info("Belum ada transaksi.")
     else:
-        for i, row in st.session_state.produk.iterrows():
-            colp = st.columns([4,1])
-            with colp[0]:
-                st.write(f"**{row['Nama']}** | SKU: {row['SKU']} | Harga: Rp{row['Harga Ritel']:,} | Stok: {row['Stok']}")
-            with colp[1]:
-                if st.button("❌ Hapus", key=f"hapus_produk_{i}"):
-                    st.session_state.produk.drop(i, inplace=True)
-                    st.session_state.produk.reset_index(drop=True, inplace=True)
-                    st.rerun()
+        all_data = []
+        for transaksi in st.session_state.history:
+            for item in transaksi:
+                all_data.append(item)
+        df = pd.DataFrame(all_data)
+        laporan = df.groupby("sku").agg(
+            nama=("name", "first"),
+            total_qty=("qty", "sum"),
+            total_penjualan=("subtotal", "sum")
+        ).reset_index()
+        st.dataframe(laporan)
 
-# ==================== HALAMAN HISTORI ====================
-elif menu == "Histori Transaksi":
-    st.title("🧾 Histori Transaksi")
+        # Export
+        col1, col2 = st.columns(2)
+        with col1:
+            excel_data = export_excel(laporan)
+            st.download_button("⬇️ Download Excel", data=excel_data, file_name="laporan_penjualan.xlsx")
+        with col2:
+            pdf_data = export_pdf(laporan)
+            st.download_button("⬇️ Download PDF", data=pdf_data, file_name="laporan_penjualan.pdf")
 
-    if st.session_state.histori:
-        for trx in st.session_state.histori:
-            st.write(f"📅 {trx['Waktu']}")
-            for item in trx["Item"]:
-                st.write(f"- {item['Nama']} x{item['Qty']} = Rp{item['Harga']*item['Qty']:,}")
-            st.write(f"**Total: Rp{trx['Total']:,}**")
-            st.markdown("---")
-    else:
-        st.info("Belum ada transaksi")
+        # Hapus histori dengan password
+        with st.expander("⚠️ Hapus Histori"):
+            pwd = st.text_input("Masukkan Password", type="password")
+            if st.button("Hapus Histori"):
+                if pwd == "Sellacyute":
+                    st.session_state.history = []
+                    st.success("Histori berhasil dihapus!")
+                else:
+                    st.error("Password salah!")
