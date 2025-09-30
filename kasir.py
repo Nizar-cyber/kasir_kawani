@@ -26,14 +26,13 @@ def init_db():
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             timestamp TEXT,
             total REAL,
-            items TEXT, -- json-like string
+            items TEXT,
             cashier TEXT
         )
         """))
     seed_products()
 
 def seed_products():
-    # tambah beberapa produk contoh jika tabel kosong
     with engine.connect() as conn:
         result = conn.execute(text("SELECT COUNT(*) FROM products"))
         count = result.scalar_one()
@@ -51,19 +50,13 @@ def seed_products():
                 except:
                     pass
 
-def get_products(search=""):
-    q = "SELECT * FROM products"
-    params = {}
-    if search:
-        q += " WHERE sku LIKE :s OR name LIKE :s"
-        params["s"] = f"%{search}%"
+def get_products():
     with engine.connect() as conn:
-        df = pd.read_sql(text(q), conn, params=params)
+        df = pd.read_sql(text("SELECT * FROM products"), conn)
     return df
 
 def add_or_update_product(sku, name, price, stock):
     with engine.connect() as conn:
-        # coba update dulu, kalau tidak ada insert
         res = conn.execute(text("SELECT id FROM products WHERE sku=:sku"), {"sku":sku}).fetchone()
         if res:
             conn.execute(text("UPDATE products SET name=:name, price=:price, stock=:stock WHERE sku=:sku"),
@@ -100,52 +93,24 @@ def get_transactions():
 # Streamlit App
 # ---------------------------
 
-st.set_page_config(page_title="Aplikasi Kasir (Streamlit)", layout="wide")
+st.set_page_config(page_title="Aplikasi Kasir", layout="wide")
 init_db()
 
 st.title("🧾 Aplikasi Kasir — Python + Streamlit")
 
-# session_state: cart adalah dict sku -> {name, price, qty, subtotal}
+# session_state: cart
 if "cart" not in st.session_state:
     st.session_state.cart = {}
 
-# Sidebar: Produk dan manajemen
+# ---------------------------
+# Sidebar
+# ---------------------------
 with st.sidebar:
-    st.header("Manajemen Produk")
-    tab = st.radio("Aksi", ["Lihat Produk", "Tambah / Edit Produk", "Histori Transaksi"])
-    if tab == "Lihat Produk":
-        q = st.text_input("Cari produk (nama / sku)")
-        df = get_products(q)
-        st.dataframe(df.astype({"price":"float","stock":"int"}), use_container_width=True)
-        st.write("Klik tombol untuk memasukkan produk ke keranjang:")
-        for _, row in df.iterrows():
-            col1, col2, col3 = st.columns([3,1,1])
-            with col1:
-                st.write(f"**{row['name']}** — {row['sku']} — Rp{row['price']:.0f} — stok: {int(row['stock'])}")
-            with col2:
-                qty = st.number_input(f"qty_{row['sku']}", min_value=1, max_value=1000, value=1, key=f"qty_{row['sku']}")
-            with col3:
-                if st.button("Tambah", key=f"add_{row['sku']}"):
-                    # cek stok
-                    if row['stock'] is not None and int(row['stock']) < qty:
-                        st.warning("Stok tidak cukup!")
-                    else:
-                        # add to cart
-                        sku = row['sku']
-                        if sku in st.session_state.cart:
-                            st.session_state.cart[sku]['qty'] += int(qty)
-                            st.session_state.cart[sku]['subtotal'] = st.session_state.cart[sku]['qty'] * st.session_state.cart[sku]['price']
-                        else:
-                            st.session_state.cart[sku] = {
-                                "sku": sku,
-                                "name": row['name'],
-                                "price": float(row['price']),
-                                "qty": int(qty),
-                                "subtotal": float(row['price'])*int(qty)
-                            }
-                        st.success(f"Tambah {row['name']} x{qty} ke keranjang")
-    elif tab == "Tambah / Edit Produk":
-        st.subheader("Tambah atau edit produk")
+    st.header("Menu")
+    tab = st.radio("Pilih", ["Tambah/Edit Produk", "Histori Transaksi"])
+
+    if tab == "Tambah/Edit Produk":
+        st.subheader("Tambah atau Edit Produk")
         with st.form("form_add"):
             sku = st.text_input("SKU (unik, misal P001)")
             name = st.text_input("Nama produk")
@@ -159,15 +124,16 @@ with st.sidebar:
                     add_or_update_product(sku, name, float(price), int(stock))
                     st.success("Produk disimpan")
         st.write("---")
-        st.subheader("Hapus produk")
-        sku_del = st.text_input("SKU untuk dihapus", key="sku_del")
-        if st.button("Hapus produk"):
+        st.subheader("Hapus Produk")
+        sku_del = st.text_input("SKU untuk dihapus")
+        if st.button("🗑 Hapus produk"):
             if sku_del:
                 remove_product(sku_del)
-                st.success("Produk dihapus (jika ada)")
+                st.success(f"Produk {sku_del} dihapus (jika ada)")
             else:
                 st.error("Masukkan SKU")
-    else:  # Histori Transaksi
+
+    elif tab == "Histori Transaksi":
         st.subheader("Histori Transaksi")
         tx = get_transactions()
         if tx.empty:
@@ -185,8 +151,50 @@ with st.sidebar:
                 except Exception as e:
                     st.write("Tidak bisa parse items:", e)
 
-# Main area: Kasir / Cart
-st.subheader("Keranjang Belanja")
+# ---------------------------
+# Main Area: Produk + Keranjang
+# ---------------------------
+
+# Produk
+st.subheader("📦 Daftar Produk")
+
+df_products = get_products()
+if df_products.empty:
+    st.info("Belum ada produk, silakan tambah di sidebar.")
+else:
+    for _, row in df_products.iterrows():
+        col1, col2, col3, col4 = st.columns([3,1,1,1])
+        with col1:
+            st.write(f"**{row['name']}** — {row['sku']} — Rp{row['price']:.0f} — stok: {int(row['stock'])}")
+        with col2:
+            qty = st.number_input(f"qty_{row['sku']}", min_value=1, max_value=100, value=1, key=f"qty_{row['sku']}")
+        with col3:
+            if st.button("➕ Tambah", key=f"add_{row['sku']}"):
+                if int(row['stock']) < qty:
+                    st.warning("Stok tidak cukup!")
+                else:
+                    if row['sku'] in st.session_state.cart:
+                        st.session_state.cart[row['sku']]['qty'] += int(qty)
+                        st.session_state.cart[row['sku']]['subtotal'] = (
+                            st.session_state.cart[row['sku']]['qty'] * st.session_state.cart[row['sku']]['price']
+                        )
+                    else:
+                        st.session_state.cart[row['sku']] = {
+                            "sku": row['sku'],
+                            "name": row['name'],
+                            "price": float(row['price']),
+                            "qty": int(qty),
+                            "subtotal": float(row['price']) * int(qty)
+                        }
+                    st.success(f"{row['name']} x{qty} ditambahkan ke keranjang")
+        with col4:
+            if st.button("🗑 Hapus", key=f"del_{row['sku']}"):
+                remove_product(row['sku'])
+                st.success(f"Produk {row['name']} dihapus")
+                st.experimental_rerun()
+
+# Keranjang
+st.subheader("🛒 Keranjang Belanja")
 
 def cart_to_df():
     if not st.session_state.cart:
@@ -196,39 +204,36 @@ def cart_to_df():
         rows.append({"sku":sku,"name":v['name'],"price":v['price'],"qty":v['qty'],"subtotal":v['subtotal']})
     return pd.DataFrame(rows)
 
-colA, colB = st.columns([2,1])
+df_cart = cart_to_df()
+if df_cart.empty:
+    st.info("Keranjang kosong.")
+else:
+    for i, row in df_cart.iterrows():
+        c1, c2, c3, c4 = st.columns([4,1,1,1])
+        with c1:
+            st.write(f"**{row['name']}** ({row['sku']})")
+        with c2:
+            newq = st.number_input(f"qty_cart_{row['sku']}", min_value=1, value=int(row['qty']), key=f"qty_cart_{row['sku']}")
+            st.session_state.cart[row['sku']]['qty'] = int(newq)
+            st.session_state.cart[row['sku']]['subtotal'] = (
+                st.session_state.cart[row['sku']]['price'] * int(newq)
+            )
+        with c3:
+            if st.button("🗑 Hapus", key=f"remove_{row['sku']}"):
+                del st.session_state.cart[row['sku']]
+                st.experimental_rerun()
+        with c4:
+            st.write(f"Rp{st.session_state.cart[row['sku']]['subtotal']:.0f}")
 
-with colA:
-    df_cart = cart_to_df()
-    if df_cart.empty:
-        st.info("Keranjang kosong. Tambahkan produk dari sidebar.")
-    else:
-        # allow qty change / remove
-        for i, row in df_cart.iterrows():
-            c1, c2, c3, c4 = st.columns([4,1,1,1])
-            with c1:
-                st.write(f"**{row['name']}** ({row['sku']})")
-            with c2:
-                newq = st.number_input(f"qty_cart_{row['sku']}", min_value=1, value=int(row['qty']), key=f"qty_cart_{row['sku']}")
-                st.session_state.cart[row['sku']]['qty'] = int(newq)
-                st.session_state.cart[row['sku']]['subtotal'] = st.session_state.cart[row['sku']]['price'] * int(newq)
-            with c3:
-                if st.button("Hapus", key=f"remove_{row['sku']}"):
-                    del st.session_state.cart[row['sku']]
-                    st.experimental_rerun()
-            with c4:
-                st.write(f"Rp{st.session_state.cart[row['sku']]['subtotal']:.0f}")
-
-with colB:
+    # Summary & Checkout
     subtotal = sum(v['subtotal'] for v in st.session_state.cart.values())
     st.metric("Subtotal (Rp)", f"{subtotal:,.0f}")
     diskon_pct = st.number_input("Diskon (%)", min_value=0.0, max_value=100.0, value=0.0, format="%.2f")
     diskon_val = subtotal * (diskon_pct/100)
-    st.write("Diskon (Rp):", f"{diskon_val:,.0f}")
     pajak_pct = st.number_input("Pajak (%)", min_value=0.0, max_value=100.0, value=0.0, format="%.2f")
     pajak_val = (subtotal - diskon_val) * (pajak_pct/100)
-    st.write("Pajak (Rp):", f"{pajak_val:,.0f}")
     total = subtotal - diskon_val + pajak_val
+
     st.markdown(f"### Total: Rp {total:,.0f}")
 
     bayar = st.number_input("Bayar (Rp)", min_value=0.0, value=float(total))
@@ -245,18 +250,9 @@ with colB:
         else:
             items_df = cart_to_df()
             filename = save_transaction(items_df, float(total), cashier=cashier_name)
-            # update stok
             for sku, v in st.session_state.cart.items():
                 change_stock(sku, -v['qty'])
             st.success(f"Transaksi sukses. Struk disimpan: {filename}")
             st.session_state.cart = {}
             st.experimental_rerun()
-
-# Footer / Tips
-st.write("---")
-st.write("Tips: kamu bisa mengembangkan aplikasi ini dengan menambahkan:")
-st.write("- Barcode scanner (scan SKU untuk add ke keranjang).")
-st.write("- Integrasi printer struk (ESC/POS).")
-st.write("- Harga jual per grosir/eceran, diskon item, dan retur.")
-st.write("- Laporan penjualan harian / bulanan.")
 
