@@ -4,6 +4,7 @@ import base64
 from io import BytesIO
 from reportlab.lib.pagesizes import A4
 from reportlab.pdfgen import canvas
+import matplotlib.pyplot as plt
 
 st.set_page_config(page_title="Kasir App", layout="wide")
 
@@ -230,6 +231,15 @@ elif menu == "Laporan Penjualan":
             total_penjualan=("subtotal", "sum")
         ).reset_index()
         st.dataframe(laporan)
+
+        # Grafik penjualan
+        st.subheader("📈 Grafik Penjualan per Produk")
+        fig, ax = plt.subplots()
+        ax.bar(laporan["sku"], laporan["total_qty"])
+        ax.set_xlabel("SKU")
+        ax.set_ylabel("Total Terjual")
+        ax.set_title("Grafik Penjualan")
+        st.pyplot(fig)
 
         # Export
         col1, col2 = st.columns(2)
