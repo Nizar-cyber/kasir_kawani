@@ -15,7 +15,9 @@ def init_db():
     CREATE TABLE IF NOT EXISTS products (
         sku TEXT PRIMARY KEY,
         name TEXT,
-        price REAL,
+        owner TEXT,
+        reseller_price REAL,
+        retail_price REAL,
         stock INTEGER
     )""")
     cur.execute("""
@@ -24,6 +26,7 @@ def init_db():
         date TEXT,
         sku TEXT,
         name TEXT,
+        owner TEXT,
         qty INTEGER,
         price REAL,
         subtotal REAL
@@ -31,11 +34,13 @@ def init_db():
     conn.commit()
     conn.close()
 
-def add_product(sku, name, price, stock):
+def add_product(sku, name, owner, reseller_price, retail_price, stock):
     conn = sqlite3.connect(DB_FILE)
     cur = conn.cursor()
-    cur.execute("INSERT INTO products (sku, name, price, stock) VALUES (?, ?, ?, ?)",
-                (sku, name, price, stock))
+    cur.execute("""
+        INSERT INTO products (sku, name, owner, reseller_price, retail_price, stock) 
+        VALUES (?, ?, ?, ?, ?, ?)
+    """, (sku, name, owner, reseller_price, retail_price, stock))
     conn.commit()
     conn.close()
 
@@ -52,11 +57,20 @@ def remove_product(sku):
     conn.commit()
     conn.close()
 
-def add_transaction(date, sku, name, qty, price, subtotal):
+def update_stock(sku, qty_sold):
     conn = sqlite3.connect(DB_FILE)
     cur = conn.cursor()
-    cur.execute("INSERT INTO transactions (date, sku, name, qty, price, subtotal) VALUES (?, ?, ?, ?, ?, ?)",
-                (date, sku, name, qty, price, subtotal))
+    cur.execute("UPDATE products SET stock = stock - ? WHERE sku=?", (qty_sold, sku))
+    conn.commit()
+    conn.close()
+
+def add_transaction(date, sku, name, owner, qty, price, subtotal):
+    conn = sqlite3.connect(DB_FILE)
+    cur = conn.cursor()
+    cur.execute("""
+        INSERT INTO transactions (date, sku, name, owner, qty, price, subtotal) 
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+    """, (date, sku, name, owner, qty, price, subtotal))
     conn.commit()
     conn.close()
 
@@ -84,12 +98,14 @@ if menu == "Tambah Produk":
     st.sidebar.subheader("Tambah Produk Baru")
     sku = st.sidebar.text_input("SKU")
     name = st.sidebar.text_input("Nama Produk")
-    price = st.sidebar.number_input("Harga", min_value=0.0, step=1000.0)
+    owner = st.sidebar.text_input("Owner")
+    reseller_price = st.sidebar.number_input("Harga Reseller", min_value=0.0, step=1000.0)
+    retail_price = st.sidebar.number_input("Harga Ritel", min_value=0.0, step=1000.0)
     stock = st.sidebar.number_input("Stok", min_value=0, step=1)
     if st.sidebar.button("Tambah"):
         if sku and name:
             try:
-                add_product(sku, name, price, stock)
+                add_product(sku, name, owner, reseller_price, retail_price, stock)
                 st.sidebar.success("Produk berhasil ditambahkan!")
             except Exception as e:
                 st.sidebar.error(f"SKU sudah ada atau error: {e}")
@@ -113,11 +129,16 @@ df_products = get_products()
 if df_products.empty:
     st.info("Belum ada produk, silakan tambah di menu sidebar.")
 else:
-    st.write("📋 Debug Produk:", df_products)  # debug tampilkan semua produk
+    st.dataframe(df_products)  # tampilkan tabel produk lengkap
+
     for _, row in df_products.iterrows():
-        col1, col2, col3, col4 = st.columns([3,1,1,1])
+        col1, col2, col3, col4 = st.columns([4,1,1,1])
         with col1:
-            st.write(f"**{row['name']}** — {row['sku']} — Rp{row['price']:.0f} — stok: {int(row['stock'])}")
+            st.write(
+                f"**{row['name']}** ({row['sku']})\n"
+                f"👤 Owner: {row['owner']} | Reseller: Rp{row['reseller_price']:.0f} | Ritel: Rp{row['retail_price']:.0f} | "
+                f"Stok: {int(row['stock'])}"
+            )
         with col2:
             qty = st.number_input(f"qty_{row['sku']}", min_value=1, max_value=100, value=1, key=f"qty_{row['sku']}")
         with col3:
@@ -131,12 +152,14 @@ else:
                             st.session_state.cart[row['sku']]['qty'] * st.session_state.cart[row['sku']]['price']
                         )
                     else:
+                        # default: pakai harga ritel
                         st.session_state.cart[row['sku']] = {
                             "sku": row['sku'],
                             "name": row['name'],
-                            "price": float(row['price']),
+                            "owner": row['owner'],
+                            "price": float(row['retail_price']),
                             "qty": int(qty),
-                            "subtotal": float(row['price']) * int(qty)
+                            "subtotal": float(row['retail_price']) * int(qty)
                         }
                     st.success(f"{row['name']} x{qty} ditambahkan ke keranjang")
         with col4:
@@ -159,7 +182,7 @@ else:
     for _, row in df_cart.iterrows():
         c1, c2, c3, c4 = st.columns([4,1,1,1])
         with c1:
-            st.write(f"**{row['name']}** ({row['sku']})")
+            st.write(f"**{row['name']}** ({row['sku']}) - Owner: {row['owner']}")
         with c2:
             newq = st.number_input(f"qty_cart_{row['sku']}", min_value=1, value=int(row['qty']), key=f"qty_cart_{row['sku']}")
             st.session_state.cart[row['sku']]['qty'] = int(newq)
@@ -171,11 +194,13 @@ else:
         with c4:
             st.write(f"Rp{st.session_state.cart[row['sku']]['subtotal']:.0f}")
 
-    st.write("### Total: Rp{:.0f}".format(sum([item['subtotal'] for item in st.session_state.cart.values()])))
+    st.write("### Total: Rp{:.0f}".format(total))
 
     if st.button("✅ Checkout"):
         today = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         for item in st.session_state.cart.values():
-            add_transaction(today, item['sku'], item['name'], item['qty'], item['price'], item['subtotal'])
-        st.success("Transaksi berhasil disimpan.")
+            add_transaction(today, item['sku'], item['name'], item['owner'], item['qty'], item['price'], item['subtotal'])
+            update_stock(item['sku'], item['qty'])
+        st.success("Transaksi berhasil disimpan dan stok berkurang.")
         st.session_state.cart = {}
+        st.experimental_rerun()
