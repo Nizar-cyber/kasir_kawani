@@ -1,206 +1,171 @@
-import streamlit as st
-import pandas as pd
-import sqlite3
-import datetime
+import React, { useState } from "react";
 
-# ---------------------------
-# Database setup
-# ---------------------------
-DB_FILE = "kasir.db"
+export default function App() {
+  const [products, setProducts] = useState([
+    {
+      sku: "SKU001",
+      name: "Produk A",
+      owner: "Nizar",
+      resellerPrice: 50000,
+      retailPrice: 60000,
+      stock: 10,
+    },
+    {
+      sku: "SKU002",
+      name: "Produk B",
+      owner: "Andi",
+      resellerPrice: 70000,
+      retailPrice: 85000,
+      stock: 5,
+    },
+  ]);
 
-def init_db():
-    conn = sqlite3.connect(DB_FILE)
-    cur = conn.cursor()
-    cur.execute("""
-    CREATE TABLE IF NOT EXISTS products (
-        sku TEXT PRIMARY KEY,
-        name TEXT,
-        owner TEXT,
-        reseller_price REAL,
-        retail_price REAL,
-        stock INTEGER
-    )""")
-    cur.execute("""
-    CREATE TABLE IF NOT EXISTS transactions (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        date TEXT,
-        sku TEXT,
-        name TEXT,
-        owner TEXT,
-        qty INTEGER,
-        price REAL,
-        subtotal REAL
-    )""")
-    conn.commit()
-    conn.close()
+  const [cart, setCart] = useState([]);
 
-def add_product(sku, name, owner, reseller_price, retail_price, stock):
-    conn = sqlite3.connect(DB_FILE)
-    cur = conn.cursor()
-    cur.execute("""
-        INSERT INTO products (sku, name, owner, reseller_price, retail_price, stock) 
-        VALUES (?, ?, ?, ?, ?, ?)
-    """, (sku, name, owner, reseller_price, retail_price, stock))
-    conn.commit()
-    conn.close()
+  const addToCart = (product, qty) => {
+    if (product.stock < qty) {
+      alert("Stok tidak mencukupi!");
+      return;
+    }
+    // cek kalau sudah ada di keranjang
+    const existing = cart.find((item) => item.sku === product.sku);
+    if (existing) {
+      setCart(
+        cart.map((item) =>
+          item.sku === product.sku
+            ? { ...item, qty: item.qty + qty }
+            : item
+        )
+      );
+    } else {
+      setCart([...cart, { ...product, qty }]);
+    }
+  };
 
-def get_products():
-    conn = sqlite3.connect(DB_FILE)
-    df = pd.read_sql("SELECT * FROM products", conn)
-    conn.close()
-    return df
+  const removeFromCart = (sku) => {
+    setCart(cart.filter((item) => item.sku !== sku));
+  };
 
-def remove_product(sku):
-    conn = sqlite3.connect(DB_FILE)
-    cur = conn.cursor()
-    cur.execute("DELETE FROM products WHERE sku=?", (sku,))
-    conn.commit()
-    conn.close()
+  const checkout = () => {
+    const updatedProducts = [...products];
+    cart.forEach((item) => {
+      const index = updatedProducts.findIndex((p) => p.sku === item.sku);
+      if (index !== -1) {
+        updatedProducts[index].stock -= item.qty;
+      }
+    });
+    setProducts(updatedProducts);
+    setCart([]);
+    alert("Checkout berhasil!");
+  };
 
-def update_stock(sku, qty_sold):
-    conn = sqlite3.connect(DB_FILE)
-    cur = conn.cursor()
-    cur.execute("UPDATE products SET stock = stock - ? WHERE sku=?", (qty_sold, sku))
-    conn.commit()
-    conn.close()
+  // Hitung total harga
+  const totalHarga = cart.reduce(
+    (sum, item) => sum + item.retailPrice * item.qty,
+    0
+  );
 
-def add_transaction(date, sku, name, owner, qty, price, subtotal):
-    conn = sqlite3.connect(DB_FILE)
-    cur = conn.cursor()
-    cur.execute("""
-        INSERT INTO transactions (date, sku, name, owner, qty, price, subtotal) 
-        VALUES (?, ?, ?, ?, ?, ?, ?)
-    """, (date, sku, name, owner, qty, price, subtotal))
-    conn.commit()
-    conn.close()
+  return (
+    <div className="p-6 grid grid-cols-2 gap-6">
+      {/* Daftar Produk */}
+      <div>
+        <h2 className="text-xl font-bold mb-4">Daftar Produk</h2>
+        <div className="space-y-4">
+          {products.map((product) => {
+            const [qty, setQty] = useState(1);
+            return (
+              <div
+                key={product.sku}
+                className="border p-4 rounded-lg shadow flex flex-col gap-2"
+              >
+                <p>
+                  <strong>SKU:</strong> {product.sku}
+                </p>
+                <p>
+                  <strong>Nama:</strong> {product.name}
+                </p>
+                <p>
+                  <strong>Owner:</strong> {product.owner}
+                </p>
+                <p>
+                  <strong>Harga Reseller:</strong> Rp
+                  {product.resellerPrice.toLocaleString()}
+                </p>
+                <p>
+                  <strong>Harga Ritel:</strong> Rp
+                  {product.retailPrice.toLocaleString()}
+                </p>
+                <p>
+                  <strong>Stok:</strong> {product.stock}
+                </p>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="number"
+                    min="1"
+                    max={product.stock}
+                    value={qty}
+                    onChange={(e) => setQty(Number(e.target.value))}
+                    className="border rounded px-2 py-1 w-20"
+                  />
+                  <button
+                    onClick={() => addToCart(product, qty)}
+                    className="bg-green-500 text-white px-3 py-1 rounded hover:bg-green-600"
+                  >
+                    Tambah ke Keranjang
+                  </button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
 
-def get_transactions():
-    conn = sqlite3.connect(DB_FILE)
-    df = pd.read_sql("SELECT * FROM transactions", conn)
-    conn.close()
-    return df
+      {/* Keranjang */}
+      <div>
+        <h2 className="text-xl font-bold mb-4">Keranjang</h2>
+        {cart.length === 0 ? (
+          <p className="text-gray-500">Keranjang kosong</p>
+        ) : (
+          <div className="space-y-4">
+            {cart.map((item) => (
+              <div
+                key={item.sku}
+                className="border p-4 rounded-lg shadow flex justify-between items-center"
+              >
+                <div>
+                  <p>
+                    {item.name} (x{item.qty})
+                  </p>
+                  <p className="text-sm text-gray-600">
+                    Rp{item.retailPrice.toLocaleString()} per item
+                  </p>
+                  <p className="font-semibold">
+                    Subtotal: Rp{(item.retailPrice * item.qty).toLocaleString()}
+                  </p>
+                </div>
+                <button
+                  onClick={() => removeFromCart(item.sku)}
+                  className="bg-red-500 text-white px-3 py-1 rounded hover:bg-red-600"
+                >
+                  Hapus
+                </button>
+              </div>
+            ))}
 
-# ---------------------------
-# Init
-# ---------------------------
-init_db()
-if "cart" not in st.session_state:
-    st.session_state.cart = {}
+            {/* Total Harga */}
+            <div className="border-t pt-4 text-lg font-semibold">
+              Total: Rp{totalHarga.toLocaleString()}
+            </div>
 
-st.title("🛒 Aplikasi Kasir")
-
-# ---------------------------
-# Sidebar menu
-# ---------------------------
-menu = st.sidebar.radio("Menu", ["Tambah Produk", "Histori Transaksi"])
-
-if menu == "Tambah Produk":
-    st.sidebar.subheader("Tambah Produk Baru")
-    sku = st.sidebar.text_input("SKU")
-    name = st.sidebar.text_input("Nama Produk")
-    owner = st.sidebar.text_input("Owner")
-    reseller_price = st.sidebar.number_input("Harga Reseller", min_value=0.0, step=1000.0)
-    retail_price = st.sidebar.number_input("Harga Ritel", min_value=0.0, step=1000.0)
-    stock = st.sidebar.number_input("Stok", min_value=0, step=1)
-    if st.sidebar.button("Tambah"):
-        if sku and name:
-            try:
-                add_product(sku, name, owner, reseller_price, retail_price, stock)
-                st.sidebar.success("Produk berhasil ditambahkan!")
-            except Exception as e:
-                st.sidebar.error(f"SKU sudah ada atau error: {e}")
-        else:
-            st.sidebar.warning("Lengkapi semua data produk.")
-
-elif menu == "Histori Transaksi":
-    st.sidebar.subheader("Histori Transaksi")
-    df_trans = get_transactions()
-    if df_trans.empty:
-        st.sidebar.info("Belum ada transaksi.")
-    else:
-        st.sidebar.dataframe(df_trans)
-
-# ---------------------------
-# Main area: Daftar Produk
-# ---------------------------
-st.subheader("📦 Daftar Produk")
-df_products = get_products()
-
-if df_products.empty:
-    st.info("Belum ada produk, silakan tambah di menu sidebar.")
-else:
-    st.dataframe(df_products)  # tampilkan tabel produk lengkap
-
-    for _, row in df_products.iterrows():
-        col1, col2, col3, col4 = st.columns([4,1,1,1])
-        with col1:
-            st.write(
-                f"**{row['name']}** ({row['sku']})\n"
-                f"👤 Owner: {row['owner']} | Reseller: Rp{row['reseller_price']:.0f} | Ritel: Rp{row['retail_price']:.0f} | "
-                f"Stok: {int(row['stock'])}"
-            )
-        with col2:
-            qty = st.number_input(f"qty_{row['sku']}", min_value=1, max_value=100, value=1, key=f"qty_{row['sku']}")
-        with col3:
-            if st.button("➕ Tambah", key=f"add_{row['sku']}"):
-                if int(row['stock']) < qty:
-                    st.warning("Stok tidak cukup!")
-                else:
-                    if row['sku'] in st.session_state.cart:
-                        st.session_state.cart[row['sku']]['qty'] += int(qty)
-                        st.session_state.cart[row['sku']]['subtotal'] = (
-                            st.session_state.cart[row['sku']]['qty'] * st.session_state.cart[row['sku']]['price']
-                        )
-                    else:
-                        # default: pakai harga ritel
-                        st.session_state.cart[row['sku']] = {
-                            "sku": row['sku'],
-                            "name": row['name'],
-                            "owner": row['owner'],
-                            "price": float(row['retail_price']),
-                            "qty": int(qty),
-                            "subtotal": float(row['retail_price']) * int(qty)
-                        }
-                    st.success(f"{row['name']} x{qty} ditambahkan ke keranjang")
-        with col4:
-            if st.button("🗑 Hapus", key=f"del_{row['sku']}"):
-                remove_product(row['sku'])
-                st.success(f"Produk {row['name']} dihapus")
-                st.experimental_rerun()
-
-# ---------------------------
-# Keranjang Belanja
-# ---------------------------
-st.subheader("🛒 Keranjang Belanja")
-
-if not st.session_state.cart:
-    st.info("Keranjang kosong.")
-else:
-    df_cart = pd.DataFrame(st.session_state.cart).T
-    total = df_cart["subtotal"].sum()
-
-    for _, row in df_cart.iterrows():
-        c1, c2, c3, c4 = st.columns([4,1,1,1])
-        with c1:
-            st.write(f"**{row['name']}** ({row['sku']}) - Owner: {row['owner']}")
-        with c2:
-            newq = st.number_input(f"qty_cart_{row['sku']}", min_value=1, value=int(row['qty']), key=f"qty_cart_{row['sku']}")
-            st.session_state.cart[row['sku']]['qty'] = int(newq)
-            st.session_state.cart[row['sku']]['subtotal'] = st.session_state.cart[row['sku']]['price'] * int(newq)
-        with c3:
-            if st.button("🗑 Hapus", key=f"remove_{row['sku']}"):
-                del st.session_state.cart[row['sku']]
-                st.experimental_rerun()
-        with c4:
-            st.write(f"Rp{st.session_state.cart[row['sku']]['subtotal']:.0f}")
-
-    st.write("### Total: Rp{:.0f}".format(total))
-
-    if st.button("✅ Checkout"):
-        today = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        for item in st.session_state.cart.values():
-            add_transaction(today, item['sku'], item['name'], item['owner'], item['qty'], item['price'], item['subtotal'])
-            update_stock(item['sku'], item['qty'])
-        st.success("Transaksi berhasil disimpan dan stok berkurang.")
-        st.session_state.cart = {}
-        st.experimental_rerun()
+            <button
+              onClick={checkout}
+              className="w-full bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600"
+            >
+              Checkout
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
