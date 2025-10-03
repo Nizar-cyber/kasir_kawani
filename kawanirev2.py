@@ -215,7 +215,7 @@ elif menu == "Edit Produk":
                 nama_dihapus = product["Nama Produk"]
                 st.session_state.products.pop(pilihan)
                 st.success(f"Produk '{nama_dihapus}' berhasil dihapus!")
-                st.experimental_rerun()
+                st.rerun()
 
 # ----------------- LAPORAN PENJUALAN -----------------
 elif menu == "Laporan Penjualan":
