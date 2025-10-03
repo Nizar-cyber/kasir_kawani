@@ -26,13 +26,13 @@ try:
     sheet_penjualan = CLIENT.open_by_key(SHEET_ID).worksheet("Penjualan")
 
 except Exception as e:
-    st.error(f"Gagal konek ke Google Sheet. Error: {e}")
+    st.error(f"Gagal konek ke Google Sheet. Pastikan credential JSON benar dan sheet sudah dishare ke service account. Error: {e}")
     st.stop()
 
 # ================= HELPER FUNCTIONS =================
 def parse_int(value):
     try:
-        return int(str(value).replace('Rp','').replace('.','').replace(',','').strip())
+        return int(str(value).replace('.', '').replace('Rp','').replace(',',''))
     except:
         return 0
 
@@ -40,29 +40,31 @@ def load_produk():
     try:
         data = sheet_produk.get_all_records()
         return pd.DataFrame(data)
-    except:
+    except Exception as e:
+        st.warning(f"Gagal ambil data produk: {e}")
         return pd.DataFrame()
 
 def save_produk(df):
     try:
         sheet_produk.clear()
         sheet_produk.update([df.columns.values.tolist()] + df.values.tolist())
-    except:
-        pass
+    except Exception as e:
+        st.error(f"Gagal simpan produk: {e}")
 
 def load_penjualan():
     try:
         data = sheet_penjualan.get_all_records()
         return pd.DataFrame(data)
-    except:
+    except Exception as e:
+        st.warning(f"Gagal ambil laporan penjualan: {e}")
         return pd.DataFrame()
 
 def save_penjualan(df):
     try:
         sheet_penjualan.clear()
         sheet_penjualan.update([df.columns.values.tolist()] + df.values.tolist())
-    except:
-        pass
+    except Exception as e:
+        st.error(f"Gagal simpan laporan penjualan: {e}")
 
 # ================= STREAMLIT APP =================
 st.set_page_config(page_title="Kasir Kawani", layout="wide")
@@ -91,12 +93,11 @@ if menu == "Kasir":
                 st.write(f"**{row['Nama Produk']}**")
                 st.caption(f"Owner: {row['Owner']}")
             with col2:
-                harga_retail = parse_int(row.get('Harga Retail', 0))
+                harga_retail = parse_int(row['Harga Retail'])
                 st.write(f"Harga Retail: Rp{harga_retail:,}")
-                stock = int(row.get('Stock', 0))
-                st.write(f"Stock: {stock}")
+                st.write(f"Stock: {row['Stock']}")
             with col3:
-                qty = st.number_input(f"Qty-{idx}", 1, max(stock,1), 1, key=f"qty{idx}")
+                qty = st.number_input(f"Qty-{idx}", 1, int(row['Stock']), 1, key=f"qty{idx}")
             with col4:
                 if st.button("Tambah", key=f"add{idx}"):
                     found = False
@@ -111,6 +112,7 @@ if menu == "Kasir":
                             "Nama Produk": row['Nama Produk'],
                             "Owner": row['Owner'],
                             "Harga Jual": harga_retail,
+                            "Potongan": parse_int(row['Potongan']),
                             "Qty": qty,
                             "Subtotal": harga_retail * qty
                         })
@@ -119,9 +121,6 @@ if menu == "Kasir":
     # Tampilkan keranjang
     st.subheader("Keranjang")
     if st.session_state.cart:
-        df_cart = pd.DataFrame(st.session_state.cart)
-        st.dataframe(df_cart)
-
         hapus_index = None
         for i, item in enumerate(st.session_state.cart):
             col1, col2, col3 = st.columns([3,2,1])
@@ -138,6 +137,9 @@ if menu == "Kasir":
             st.session_state.cart.pop(hapus_index)
             st.experimental_rerun()
 
+        df_cart = pd.DataFrame(st.session_state.cart)
+        st.dataframe(df_cart)
+
         total = sum([x["Subtotal"] for x in st.session_state.cart])
         st.write(f"### Total: Rp{int(total):,}")
 
@@ -153,6 +155,7 @@ if menu == "Kasir":
                         "Nama Produk": item["Nama Produk"],
                         "Owner": item["Owner"],
                         "Harga Jual": item["Harga Jual"],
+                        "Potongan": item["Potongan"],
                         "Qty": item["Qty"],
                         "Subtotal": item["Subtotal"]
                     }
@@ -169,7 +172,7 @@ if menu == "Kasir":
             else:
                 st.error("Nominal pembayaran kurang!")
 
-# ================= MENU LAIN =================
+# ================= DAFTAR PRODUK =================
 elif menu == "Daftar Produk":
     st.title("📦 Daftar Produk")
     produk_df = st.session_state.produk_df
@@ -187,6 +190,7 @@ elif menu == "Daftar Produk":
         save_produk(new_df)
         st.success("Produk berhasil diupload.")
 
+# ================= TAMBAH PRODUK =================
 elif menu == "Tambah Produk":
     st.title("➕ Tambah Produk")
     produk_df = st.session_state.produk_df
@@ -212,19 +216,21 @@ elif menu == "Tambah Produk":
         save_produk(produk_df)
         st.success("Produk berhasil ditambahkan.")
 
+# ================= EDIT PRODUK =================
 elif menu == "Edit Produk":
     st.title("✏️ Edit Produk")
     produk_df = st.session_state.produk_df
+
     if not produk_df.empty:
         pilihan = st.selectbox("Pilih Produk", produk_df["Nama Produk"].unique())
         row = produk_df[produk_df["Nama Produk"] == pilihan].iloc[0]
 
         nama = st.text_input("Nama Produk", row["Nama Produk"])
         owner = st.text_input("Owner", row["Owner"])
-        harga_reseller = st.number_input("Harga Reseller", min_value=0, value=parse_int(row.get("Harga Reseller",0)))
-        harga_retail   = st.number_input("Harga Retail", min_value=0, value=parse_int(row.get("Harga Retail",0)))
-        potongan       = st.number_input("Potongan", min_value=0, value=parse_int(row.get("Potongan",0)))
-        stock          = st.number_input("Stock", min_value=0, value=int(row.get("Stock",0)))
+        harga_reseller = st.number_input("Harga Reseller", min_value=0, value=int(row["Harga Reseller"]))
+        harga_retail = st.number_input("Harga Retail", min_value=0, value=int(row["Harga Retail"]))
+        potongan = st.number_input("Potongan", min_value=0, value=int(row["Potongan"]))
+        stock = st.number_input("Stock", min_value=0, value=int(row["Stock"]))
 
         if st.button("Update Produk"):
             idx_produk = produk_df[produk_df["Nama Produk"] == pilihan].index[0]
@@ -238,9 +244,11 @@ elif menu == "Edit Produk":
             save_produk(produk_df)
             st.success("Produk berhasil diupdate.")
 
+# ================= HAPUS PRODUK =================
 elif menu == "Hapus Produk":
     st.title("🗑️ Hapus Produk")
     produk_df = st.session_state.produk_df
+
     if not produk_df.empty:
         pilihan = st.selectbox("Pilih Produk", produk_df["Nama Produk"].unique())
         if st.button("Hapus"):
@@ -249,17 +257,33 @@ elif menu == "Hapus Produk":
             save_produk(produk_df)
             st.success("Produk berhasil dihapus.")
 
+# ================= LAPORAN PENJUALAN =================
 elif menu == "Laporan Penjualan":
     st.title("📊 Laporan Penjualan")
     laporan_df = st.session_state.penjualan_df
-    st.dataframe(laporan_df)
 
     if not laporan_df.empty:
+        laporan_df["Total Harga Jual"] = laporan_df["Harga Jual"] * laporan_df["Qty"]
+        laporan_df["Total Potongan"] = laporan_df["Potongan"] * laporan_df["Qty"]
+        laporan_df["Laba Bersih"] = laporan_df["Total Harga Jual"] - laporan_df["Total Potongan"]
+
+        st.dataframe(laporan_df)
+
+        total_harga_jual = laporan_df["Total Harga Jual"].sum()
+        total_potongan = laporan_df["Total Potongan"].sum()
+        total_laba = laporan_df["Laba Bersih"].sum()
+
+        st.write(f"**Total Harga Jual:** Rp{total_harga_jual:,}")
+        st.write(f"**Total Potongan:** Rp{total_potongan:,}")
+        st.write(f"**Total Laba Bersih:** Rp{total_laba:,}")
+
+        # Export Excel
         output = BytesIO()
         with pd.ExcelWriter(output, engine="openpyxl") as writer:
             laporan_df.to_excel(writer, index=False, sheet_name="Laporan")
         st.download_button("Download Excel", data=output.getvalue(), file_name="laporan_penjualan.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 
+        # Export PDF
         pdf_output = BytesIO()
         doc = SimpleDocTemplate(pdf_output, pagesize=A4)
         styles = getSampleStyleSheet()
