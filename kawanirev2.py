@@ -128,6 +128,7 @@ def upload_products(file):
 menu = st.sidebar.radio("Menu", ["Kasir", "Daftar Produk", "Tambah Produk", "Edit Produk", "Laporan Penjualan"])
 
 # ----------------- KASIR -----------------
+# ----------------- KASIR -----------------
 if menu == "Kasir":
     st.header("Kasir")
 
@@ -147,8 +148,32 @@ if menu == "Kasir":
     st.subheader("Keranjang")
     if st.session_state.cart:
         total = sum(item["Harga Retail"] * item["Qty"] for item in st.session_state.cart)
-        st.table(pd.DataFrame(st.session_state.cart))
+        df_cart = pd.DataFrame(st.session_state.cart)
+        st.table(df_cart)
         st.write(f"Total: Rp{total:,}")
+
+        # --- fitur hapus/kurangi qty ---
+        pilih_item = st.selectbox("Pilih item keranjang", range(len(st.session_state.cart)),
+                                  format_func=lambda x: f"{st.session_state.cart[x]['Nama Produk']} (Qty:{st.session_state.cart[x]['Qty']})")
+
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            if st.button("Kurangi Qty"):
+                if st.session_state.cart[pilih_item]["Qty"] > 1:
+                    st.session_state.cart[pilih_item]["Qty"] -= 1
+                    st.success("Qty dikurangi 1")
+                else:
+                    st.warning("Qty sudah 1, gunakan hapus jika ingin menghilangkan item")
+                st.rerun()
+
+        with col2:
+            if st.button("Hapus Item"):
+                nama_item = st.session_state.cart[pilih_item]["Nama Produk"]
+                st.session_state.cart.pop(pilih_item)
+                st.success(f"Item '{nama_item}' dihapus dari keranjang")
+                st.rerun()
+
+        # --- checkout ---
         payment = st.number_input("Nominal Pembayaran", min_value=0, value=0)
         if st.button("Checkout"):
             change, error = checkout(payment)
@@ -158,6 +183,7 @@ if menu == "Kasir":
                 st.success(f"Checkout berhasil! Kembalian: Rp{change:,}")
     else:
         st.write("Keranjang kosong.")
+
 
 # ----------------- DAFTAR PRODUK -----------------
 elif menu == "Daftar Produk":
