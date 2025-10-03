@@ -186,22 +186,36 @@ elif menu == "Tambah Produk":
             st.success("Produk berhasil ditambahkan!")
 
 # ----------------- EDIT PRODUK -----------------
+# ----------------- EDIT PRODUK -----------------
 elif menu == "Edit Produk":
     st.header("Edit Produk")
     if st.session_state.products:
         produk_names = [f"{p['Nama Produk']} ({p['Owner']})" for p in st.session_state.products]
         pilihan = st.selectbox("Pilih produk", range(len(produk_names)), format_func=lambda x: produk_names[x])
         product = st.session_state.products[pilihan]
+
         with st.form("edit_produk"):
             product["Owner"] = st.text_input("Owner", value=product["Owner"])
             product["Nama Produk"] = st.text_input("Nama Produk", value=product["Nama Produk"])
             product["Harga Reseller"] = st.number_input("Harga Reseller", min_value=0, value=product["Harga Reseller"])
             product["Harga Retail"] = st.number_input("Harga Retail", min_value=0, value=product["Harga Retail"])
             product["Stock"] = st.number_input("Stock", min_value=0, value=product["Stock"])
-            submit = st.form_submit_button("Update")
+            
+            col1, col2 = st.columns(2)
+            with col1:
+                submit = st.form_submit_button("Update")
+            with col2:
+                hapus = st.form_submit_button("Hapus Produk")
+
             if submit:
                 product["Potongan"] = product["Harga Retail"] - product["Harga Reseller"]
                 st.success("Produk berhasil diupdate!")
+
+            if hapus:
+                nama_dihapus = product["Nama Produk"]
+                st.session_state.products.pop(pilihan)
+                st.success(f"Produk '{nama_dihapus}' berhasil dihapus!")
+                st.experimental_rerun()
 
 # ----------------- LAPORAN PENJUALAN -----------------
 elif menu == "Laporan Penjualan":
