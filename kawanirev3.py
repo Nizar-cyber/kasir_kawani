@@ -22,6 +22,10 @@ from reportlab.lib.styles import getSampleStyleSheet
 from datetime import datetime
 
 # ================= GOOGLE SHEET SETUP =================
+import gspread
+from oauth2client.service_account import ServiceAccountCredentials
+import streamlit as st
+
 SCOPE = [
     "https://spreadsheets.google.com/feeds",
     "https://www.googleapis.com/auth/spreadsheets",
@@ -29,12 +33,10 @@ SCOPE = [
 ]
 
 try:
-    CREDS = ServiceAccountCredentials.from_json_keyfile_name(
-        "kasirsella-f50160d2380d.json", SCOPE
-    )
-    CLIENT = gspread.authorize(CREDS)
+    creds_dict = st.secrets["gcp_service_account"]
+    creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, SCOPE)
+    CLIENT = gspread.authorize(creds)
 
-    # ID Google Sheet "Kasir Sella"
     SHEET_ID = "1ksV8WUxNLleiyAv9FbpLUqgIQ3Njt-_HNTshfSEDVS4"
     sheet_produk = CLIENT.open_by_key(SHEET_ID).worksheet("Produk")
     sheet_penjualan = CLIENT.open_by_key(SHEET_ID).worksheet("Penjualan")
@@ -42,6 +44,7 @@ try:
 except Exception as e:
     st.error(f"Gagal konek ke Google Sheet. Pastikan credential JSON benar dan sheet sudah dishare ke service account. Error: {e}")
     st.stop()
+
 
 
 # ================= HELPER FUNCTIONS =================
