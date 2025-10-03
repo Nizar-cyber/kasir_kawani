@@ -1,0 +1,13 @@
+{
+  "type": "service_account",
+  "project_id": "kasirsella",
+  "private_key_id": "f50160d2380de991c71723042446929fca172808",
+  "private_key": "-----BEGIN PRIVATE KEY-----\nMIIEvAIBADANBgkqhkiG9w0BAQEFAASCBKYwggSiAgEAAoIBAQDZsMbsu9cwBgLf\nwVVPhMmQb5/Y/ZACJAsjt/ZtOk0o99YNq7lix4oPXdQOmCFnYyrrkz2SL8RobwvB\nXFrWc1lgdAnEwUn22DcCGFiewfkSSTShZ8Wuwq8DnmNkCgCDDd8oSmwho18044mX\nkZlD8qRaJzT+OxYmTXMyVMVePtgNvtaIzGbm/KR9hxtX9mjV5blGYMn1jVO0AQLX\n6uadY876uA8BEHCvNPqr/rz4Ufs2uxkbFzqNkDhiYAG6eecbl9YfKtVr9WInbqch\n6WK/FC+9jJ7XPc/q8XQfz1DlGyOI894ui/TzU8dXEE2JZtU5reH4FU5Rc96EPm6V\nm/FKc8qTAgMBAAECggEAAUzSxoORegiL9QwkvbA8VLyyueTU+r5LKfAL7IRGa7IE\nBdoUGSi56vRgTNbQJ3VQwoFpnIYYG5hclWk/MNXiUpCLpZb5IYLfD6GKyr/vBEXw\n2e0fVOp17+tlPcOCVBLXVb7do6gwuSvwT9OfYU5ORV+Qkg6GR/CuEthHKXq7AMuZ\n85+nuy0UWv/FQiXa3fhsMZihLp3CKpzNiBlnxa18CTtr46hVzf5Aj7zVd+LeiEYz\nbg9KsO5RcgApTUoaNiqo647RDZVUQan/Mf8KBRqtI5N3XlXbnJDPsVx+EQnabTSD\nGP9E1f8t/mcBXVSP3eMDPu5cgsK2KO4OzZpOqoImUQKBgQD88o4fkgqA3fIiUjaz\nLFhrEJ1ZxF2Txgqe+RcRGBGsbCo/xHDUSPOa4YkXtRY+2GqICwCIXnZob4vBfBym\n59WobfnXOWBRHzYHh5hiPdR3g6QB+gC1TA9/m00km7LxKvZs3NSSywjg8A6QIrTI\nNCZGB5Pwm1eFYOcGfXbEU0h3SQKBgQDcUUz1jbYkGF7HXfkgY4I1vFqr8YUM/z/x\neTo2qP7dJmO9Q4pg7Td2TBkGxSvDuxq8D3xelHlzpegyvJhxV69qYKb6iO4fsATI\na7mCs0mAmL6HBHcWrk201HHNn6o26EyEWKvZrVGT3xfeaHGxa8Xrgp4/i3OFdNN1\n67pBwSIm+wKBgGX5j2yQ3uUnFTfa9yxyw06eiyEmdideHugKOc9taaqejMXadzZO\nFs+o/zDsk4RQkVo5PUS8+HWQCsK9O3vaWRunAqNPAVKTB6AvfTKWBLMOAi+9z01H\n1bO3M3l/v7tUe7ZVrOllKzYr8WMQatuPkqKG6ZCFv9oIv/qw2BG8FanpAoGAYCfP\nmeA2nXxRaVv3Tg6AFunU/PRVKH4Cr2ZEZPTO/0AxCbp/m5wMt8GwrobBehSgL3Hm\nyvSsKTBArlwngFhPw/LZDcFThFrzS3HQrl2Hd+uyRAVL4IdEfOa3oJHN3Vb3hk+Y\n+VEuqIYWycf1zwSFhisk3AEF8zowzGeMjAQ53p8CgYA+x0GoQWkB6w6RErcvnr0l\nrMhgpDu5nSOPDRDribBKDrAOHt45Kqm6ck9SHQdwXJGgX3QLynvE4s/rZzImTtd/\nV1cYQDOucDaOVrRZm8LKtaOYxyTOwY/Ef86eDFbIATxS3cK0iguVbzjpGBo1BUmx\ng51N5CmykPwzLG2pF/mxqw==\n-----END PRIVATE KEY-----\n",
+  "client_email": "kasir-service@kasirsella.iam.gserviceaccount.com",
+  "client_id": "113993558981124978185",
+  "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+  "token_uri": "https://oauth2.googleapis.com/token",
+  "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
+  "client_x509_cert_url": "https://www.googleapis.com/robot/v1/metadata/x509/kasir-service%40kasirsella.iam.gserviceaccount.com",
+  "universe_domain": "googleapis.com"
+}
