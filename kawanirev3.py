@@ -1,7 +1,7 @@
 import streamlit as st
 import pandas as pd
 import gspread
-from oauth2client.service_account import ServiceAccountCredentials
+from google.oauth2.service_account import Credentials
 from io import BytesIO
 from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph
 from reportlab.lib import colors
@@ -10,9 +10,12 @@ from reportlab.lib.styles import getSampleStyleSheet
 from datetime import datetime
 
 # ================= GOOGLE SHEET SETUP =================
-SCOPE = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
-CREDS = ServiceAccountCredentials.from_json_keyfile_name("kasirsella-f50160d2380d.json", SCOPE)
+SCOPE = ["https://www.googleapis.com/auth/spreadsheets",
+         "https://www.googleapis.com/auth/drive"]
+
+CREDS = Credentials.from_service_account_file("kasirsella-f50160d2380d.json", scopes=SCOPE)
 CLIENT = gspread.authorize(CREDS)
+
 
 # Ganti dengan ID Google Sheet kamu
 SHEET_ID = "1ksV8WUxNLleiyAv9FbpLUqgIQ3Njt-_HNTshfSEDVS4"
@@ -58,7 +61,7 @@ if menu == "Kasir":
                 st.write(f"**{row['Nama Produk']}**")
                 st.caption(f"Owner: {row['Owner']}")
             with col2:
-                st.write(f"Harga: Rp{int(row['Harga Jual']):,}")
+                st.write(f"Harga: Rp{int(row['Harga Retail']):,}")
                 st.write(f"Stock: {row['Stock']}")
             with col3:
                 qty = st.number_input(f"Qty-{idx}", 1, row['Stock'], 1, key=f"qty{idx}")
@@ -67,9 +70,9 @@ if menu == "Kasir":
                     st.session_state.cart.append({
                         "Nama Produk": row['Nama Produk'],
                         "Owner": row['Owner'],
-                        "Harga Jual": row['Harga Jual'],
+                        "Harga Retail": row['Harga Retail'],
                         "Qty": qty,
-                        "Subtotal": row['Harga Jual'] * qty
+                        "Subtotal": row['Harga Retail'] * qty
                     })
                     st.success(f"{row['Nama Produk']} ditambahkan ke keranjang!")
 
@@ -94,7 +97,7 @@ if menu == "Kasir":
                         "Waktu": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
                         "Nama Produk": item["Nama Produk"],
                         "Owner": item["Owner"],
-                        "Harga Jual": item["Harga Jual"],
+                        "Harga Retail": item["Harga Retail"],
                         "Qty": item["Qty"],
                         "Subtotal": item["Subtotal"]
                     }
@@ -131,11 +134,11 @@ elif menu == "Tambah Produk":
 
     nama = st.text_input("Nama Produk")
     owner = st.text_input("Owner")
-    harga = st.number_input("Harga Jual", min_value=0)
+    harga = st.number_input("Harga Retail", min_value=0)
     stock = st.number_input("Stock", min_value=0)
 
     if st.button("Simpan Produk"):
-        new_row = {"Owner": owner, "Nama Produk": nama, "Harga Jual": harga, "Stock": stock}
+        new_row = {"Owner": owner, "Nama Produk": nama, "Harga Retail": harga, "Stock": stock}
         produk_df = pd.concat([produk_df, pd.DataFrame([new_row])], ignore_index=True)
         save_produk(produk_df)
         st.success("Produk berhasil ditambahkan.")
@@ -151,14 +154,14 @@ elif menu == "Edit Produk":
 
         nama = st.text_input("Nama Produk", row["Nama Produk"])
         owner = st.text_input("Owner", row["Owner"])
-        harga = st.number_input("Harga Jual", min_value=0, value=int(row["Harga Jual"]))
+        harga = st.number_input("Harga Retail", min_value=0, value=int(row["Harga Retail"]))
         stock = st.number_input("Stock", min_value=0, value=int(row["Stock"]))
 
         if st.button("Update Produk"):
             idx = produk_df[produk_df["Nama Produk"] == pilihan].index[0]
             produk_df.at[idx, "Nama Produk"] = nama
             produk_df.at[idx, "Owner"] = owner
-            produk_df.at[idx, "Harga Jual"] = harga
+            produk_df.at[idx, "Harga Retail"] = harga
             produk_df.at[idx, "Stock"] = stock
             save_produk(produk_df)
             st.success("Produk berhasil diupdate.")
