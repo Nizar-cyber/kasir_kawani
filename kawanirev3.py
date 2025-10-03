@@ -1,7 +1,7 @@
 import streamlit as st
 import pandas as pd
 import gspread
-from google.oauth2.service_account import Credentials
+from oauth2client.service_account import ServiceAccountCredentials
 from io import BytesIO
 from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph
 from reportlab.lib import colors
@@ -10,12 +10,9 @@ from reportlab.lib.styles import getSampleStyleSheet
 from datetime import datetime
 
 # ================= GOOGLE SHEET SETUP =================
-SCOPE = ["https://www.googleapis.com/auth/spreadsheets",
-         "https://www.googleapis.com/auth/drive"]
-
-CREDS = Credentials.from_service_account_file("kasirsella-f50160d2380d.json", scopes=SCOPE)
+SCOPE = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
+CREDS = ServiceAccountCredentials.from_json_keyfile_name("kasirsella-f50160d2380d.json", SCOPE)
 CLIENT = gspread.authorize(CREDS)
-
 
 # Ganti dengan ID Google Sheet kamu
 SHEET_ID = "1ksV8WUxNLleiyAv9FbpLUqgIQ3Njt-_HNTshfSEDVS4"
@@ -61,16 +58,16 @@ if menu == "Kasir":
                 st.write(f"**{row['Nama Produk']}**")
                 st.caption(f"Owner: {row['Owner']}")
             with col2:
-                st.write(f"Harga: Rp{int(row['Harga Retail']):,}")
+                st.write(f"Harga Retail: Rp{int(row['Harga Retail']):,}")
                 st.write(f"Stock: {row['Stock']}")
             with col3:
-                qty = st.number_input(f"Qty-{idx}", 1, row['Stock'], 1, key=f"qty{idx}")
+                qty = st.number_input(f"Qty-{idx}", 1, int(row['Stock']), 1, key=f"qty{idx}")
             with col4:
                 if st.button("Tambah", key=f"add{idx}"):
                     st.session_state.cart.append({
                         "Nama Produk": row['Nama Produk'],
                         "Owner": row['Owner'],
-                        "Harga Retail": row['Harga Retail'],
+                        "Harga Jual": row['Harga Retail'],   # Pakai Harga Retail
                         "Qty": qty,
                         "Subtotal": row['Harga Retail'] * qty
                     })
@@ -97,7 +94,7 @@ if menu == "Kasir":
                         "Waktu": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
                         "Nama Produk": item["Nama Produk"],
                         "Owner": item["Owner"],
-                        "Harga Retail": item["Harga Retail"],
+                        "Harga Jual": item["Harga Jual"],
                         "Qty": item["Qty"],
                         "Subtotal": item["Subtotal"]
                     }
@@ -105,7 +102,7 @@ if menu == "Kasir":
 
                     # Kurangi stock
                     idx = produk_df[produk_df["Nama Produk"] == item["Nama Produk"]].index[0]
-                    produk_df.at[idx, "Stock"] -= item["Qty"]
+                    produk_df.at[idx, "Stock"] = int(produk_df.at[idx, "Stock"]) - item["Qty"]
 
                 save_penjualan(penjualan_df)
                 save_produk(produk_df)
@@ -119,7 +116,10 @@ elif menu == "Daftar Produk":
     produk_df = load_produk()
     st.dataframe(produk_df)
 
-    st.download_button("Download Template Produk", data=produk_df.to_csv(index=False).encode("utf-8"), file_name="template_produk.csv", mime="text/csv")
+    st.download_button("Download Template Produk", 
+        data=produk_df.to_csv(index=False).encode("utf-8"), 
+        file_name="template_produk.csv", 
+        mime="text/csv")
 
     uploaded_file = st.file_uploader("Upload Produk (CSV)", type=["csv"])
     if uploaded_file:
@@ -134,11 +134,20 @@ elif menu == "Tambah Produk":
 
     nama = st.text_input("Nama Produk")
     owner = st.text_input("Owner")
-    harga = st.number_input("Harga Retail", min_value=0)
+    harga_reseller = st.number_input("Harga Reseller", min_value=0)
+    harga_retail = st.number_input("Harga Retail", min_value=0)
+    potongan = st.number_input("Potongan", min_value=0)
     stock = st.number_input("Stock", min_value=0)
 
     if st.button("Simpan Produk"):
-        new_row = {"Owner": owner, "Nama Produk": nama, "Harga Retail": harga, "Stock": stock}
+        new_row = {
+            "Owner": owner, 
+            "Nama Produk": nama, 
+            "Harga Reseller": harga_reseller, 
+            "Harga Retail": harga_retail, 
+            "Potongan": potongan,
+            "Stock": stock
+        }
         produk_df = pd.concat([produk_df, pd.DataFrame([new_row])], ignore_index=True)
         save_produk(produk_df)
         st.success("Produk berhasil ditambahkan.")
@@ -154,14 +163,18 @@ elif menu == "Edit Produk":
 
         nama = st.text_input("Nama Produk", row["Nama Produk"])
         owner = st.text_input("Owner", row["Owner"])
-        harga = st.number_input("Harga Retail", min_value=0, value=int(row["Harga Retail"]))
+        harga_reseller = st.number_input("Harga Reseller", min_value=0, value=int(row["Harga Reseller"]))
+        harga_retail = st.number_input("Harga Retail", min_value=0, value=int(row["Harga Retail"]))
+        potongan = st.number_input("Potongan", min_value=0, value=int(row["Potongan"]))
         stock = st.number_input("Stock", min_value=0, value=int(row["Stock"]))
 
         if st.button("Update Produk"):
             idx = produk_df[produk_df["Nama Produk"] == pilihan].index[0]
             produk_df.at[idx, "Nama Produk"] = nama
             produk_df.at[idx, "Owner"] = owner
-            produk_df.at[idx, "Harga Retail"] = harga
+            produk_df.at[idx, "Harga Reseller"] = harga_reseller
+            produk_df.at[idx, "Harga Retail"] = harga_retail
+            produk_df.at[idx, "Potongan"] = potongan
             produk_df.at[idx, "Stock"] = stock
             save_produk(produk_df)
             st.success("Produk berhasil diupdate.")
