@@ -122,18 +122,23 @@ if menu == "Kasir":
         st.dataframe(df_cart)
 
         # Edit & hapus keranjang
-        for i, item in enumerate(st.session_state.cart):
-            col1, col2, col3 = st.columns([3,2,1])
-            with col1:
-                st.write(f"{item['Nama Produk']} ({item['Owner']})")
-            with col2:
-                new_qty = st.number_input(f"Edit Qty-{i}", 1, 1000, item['Qty'], key=f"editqty{i}")
-                st.session_state.cart[i]['Qty'] = new_qty
-                st.session_state.cart[i]['Subtotal'] = new_qty * item['Harga Jual']
-            with col3:
-                if st.button("Hapus", key=f"hapus{i}"):
-                    st.session_state.cart.pop(i)
-                    st.experimental_rerun()
+        hapus_index = None
+for i, item in enumerate(st.session_state.cart):
+    col1, col2, col3 = st.columns([3,2,1])
+    with col1:
+        st.write(f"{item['Nama Produk']} ({item['Owner']})")
+    with col2:
+        new_qty = st.number_input(f"Edit Qty-{i}", 1, 1000, item['Qty'], key=f"editqty{i}")
+        st.session_state.cart[i]['Qty'] = new_qty
+        st.session_state.cart[i]['Subtotal'] = new_qty * item['Harga Jual']
+    with col3:
+        if st.button("Hapus", key=f"hapus{i}"):
+            hapus_index = i
+
+if hapus_index is not None:
+    st.session_state.cart.pop(hapus_index)
+    st.experimental_rerun()
+
 
         total = sum([x["Subtotal"] for x in st.session_state.cart])
         st.write(f"### Total: Rp{int(total):,}")
