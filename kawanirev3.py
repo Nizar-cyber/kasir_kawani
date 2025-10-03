@@ -1,7 +1,7 @@
 import streamlit as st
 import pandas as pd
+from google.oauth2.service_account import Credentials
 import gspread
-from oauth2client.service_account import ServiceAccountCredentials
 from io import BytesIO
 from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph
 from reportlab.lib import colors
@@ -10,23 +10,18 @@ from reportlab.lib.styles import getSampleStyleSheet
 from datetime import datetime
 
 # ================= GOOGLE SHEET SETUP =================
-SCOPE = [
-    "https://spreadsheets.google.com/feeds",
-    "https://www.googleapis.com/auth/spreadsheets",
-    "https://www.googleapis.com/auth/drive"
-]
-
 try:
     creds_dict = st.secrets["gcp_service_account"]
-    creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, SCOPE)
+    scopes = ["https://www.googleapis.com/auth/spreadsheets",
+              "https://www.googleapis.com/auth/drive"]
+    creds = Credentials.from_service_account_info(creds_dict, scopes=scopes)
     CLIENT = gspread.authorize(creds)
 
-    SHEET_ID = "1ksV8WUxNLleiyAv9FbpLUqgIQ3Njt-_HNTshfSEDVS4"
-    sheet_produk = CLIENT.open_by_key(SHEET_ID).worksheet("Produk")
-    sheet_penjualan = CLIENT.open_by_key(SHEET_ID).worksheet("Penjualan")
+    sheet_produk = CLIENT.open("KasirSella").worksheet("Produk")
+    sheet_penjualan = CLIENT.open("KasirSella").worksheet("Penjualan")
 
 except Exception as e:
-    st.error(f"Gagal konek ke Google Sheet. Pastikan credential JSON benar dan sheet sudah dishare ke service account. Error: {e}")
+    st.error(f"Gagal konek ke Google Sheet. Error: {e}")
     st.stop()
 
 # ================= HELPER FUNCTIONS =================
@@ -35,16 +30,18 @@ def load_produk():
     return pd.DataFrame(data)
 
 def save_produk(df):
-    sheet_produk.clear()
-    sheet_produk.update([df.columns.values.tolist()] + df.values.tolist())
+    if not df.empty:
+        sheet_produk.clear()
+        sheet_produk.update([df.columns.tolist()] + df.values.tolist())
 
 def load_penjualan():
     data = sheet_penjualan.get_all_records()
     return pd.DataFrame(data)
 
 def save_penjualan(df):
-    sheet_penjualan.clear()
-    sheet_penjualan.update([df.columns.values.tolist()] + df.values.tolist())
+    if not df.empty:
+        sheet_penjualan.clear()
+        sheet_penjualan.update([df.columns.tolist()] + df.values.tolist())
 
 # ================= STREAMLIT APP =================
 st.set_page_config(page_title="Kasir Kawani", layout="wide")
@@ -218,7 +215,7 @@ elif menu == "Laporan Penjualan":
         pdf_output = BytesIO()
         doc = SimpleDocTemplate(pdf_output, pagesize=A4)
         styles = getSampleStyleSheet()
-        table_data = [laporan_df.columns.tolist()] + laporan_df.values.tolist()
+        table_data = [laporan_df.columns.tolist()] + laporan_df.astype(str).values.tolist()
         table = Table(table_data)
         table.setStyle(TableStyle([("BACKGROUND", (0,0), (-1,0), colors.grey),
                                    ("GRID", (0,0), (-1,-1), 1, colors.black)]))
