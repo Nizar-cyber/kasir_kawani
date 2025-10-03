@@ -4,3 +4,6 @@ sqlalchemy
 reportlab
 matplotlib
 openpyxl
+gspread
+oauth2client
+
