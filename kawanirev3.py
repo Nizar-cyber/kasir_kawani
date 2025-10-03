@@ -1,167 +1,184 @@
 import streamlit as st
 import pandas as pd
-import base64
+import datetime
 from io import BytesIO
-import matplotlib.pyplot as plt
 
-st.set_page_config(page_title="Kasir App", layout="wide")
+st.set_page_config(page_title="Kasir Kawani", layout="wide")
 
-# ----------------- SESSION STATE -----------------
+# ==================== SESSION STATE ====================
 if "products" not in st.session_state:
     st.session_state.products = [
-        {"SKU": "SKU001", "Nama Produk": "Produk A", "Harga Jual": 10000, "Owner": "Owner1"},
-        {"SKU": "SKU002", "Nama Produk": "Produk B", "Harga Jual": 15000, "Owner": "Owner1"},
-        {"SKU": "SKU003", "Nama Produk": "Produk C", "Harga Jual": 20000, "Owner": "Owner2"},
+        {"Nama Produk": "Produk A", "Harga Jual": 15000, "Harga Reseller": 12000, "Owner": "Owner1"},
+        {"Nama Produk": "Produk B", "Harga Jual": 20000, "Harga Reseller": 17000, "Owner": "Owner1"},
+        {"Nama Produk": "Produk C", "Harga Jual": 10000, "Harga Reseller": 8000, "Owner": "Owner2"},
     ]
 
 if "cart" not in st.session_state:
     st.session_state.cart = []
 
-if "report" not in st.session_state:
-    st.session_state.report = []
+if "sales" not in st.session_state:
+    st.session_state.sales = []
 
-
-# ----------------- FUNGSI TEMPLATE EXCEL -----------------
-def download_template_excel():
-    df_template = pd.DataFrame({
-        "SKU": ["SKU001", "SKU002"],
-        "Nama Produk": ["Produk Contoh A", "Produk Contoh B"],
-        "Harga Jual": [10000, 20000],
-        "Owner": ["Owner1", "Owner2"]
+# ==================== HELPER FUNCTIONS ====================
+def add_to_cart(product, qty):
+    for item in st.session_state.cart:
+        if item["Nama Produk"] == product["Nama Produk"]:
+            item["Qty"] += qty
+            item["Subtotal"] = item["Qty"] * item["Harga Jual"]
+            return
+    st.session_state.cart.append({
+        "Nama Produk": product["Nama Produk"],
+        "Owner": product["Owner"],
+        "Harga Jual": product["Harga Jual"],
+        "Harga Reseller": product["Harga Reseller"],
+        "Potongan": product["Harga Jual"] - product["Harga Reseller"],
+        "Qty": qty,
+        "Subtotal": qty * product["Harga Jual"]
     })
 
-    buffer = BytesIO()
-    with pd.ExcelWriter(buffer, engine="xlsxwriter") as writer:
-        df_template.to_excel(writer, index=False, sheet_name="Template Produk")
+def checkout(payment):
+    total = sum(item["Subtotal"] for item in st.session_state.cart)
+    kembalian = payment - total
+    for item in st.session_state.cart:
+        st.session_state.sales.append({
+            "Timestamp": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "Nama Produk": item["Nama Produk"],
+            "Owner": item["Owner"],
+            "Harga Jual": item["Harga Jual"],
+            "Harga Reseller": item["Harga Reseller"],
+            "Potongan": item["Potongan"],
+            "Qty": item["Qty"],
+            "Subtotal": item["Subtotal"],
+            "Pembayaran": payment,
+            "Kembalian": kembalian
+        })
+    st.session_state.cart = []
+    return kembalian
 
-    return buffer.getvalue()
+def export_excel(data):
+    output = BytesIO()
+    df = pd.DataFrame(data)
+    with pd.ExcelWriter(output, engine="openpyxl") as writer:
+        df.to_excel(writer, index=False, sheet_name="Laporan")
+    return output.getvalue()
 
+def template_excel():
+    template = pd.DataFrame([{
+        "Timestamp": "",
+        "Nama Produk": "",
+        "Owner": "",
+        "Harga Jual": "",
+        "Harga Reseller": "",
+        "Potongan": "",
+        "Qty": "",
+        "Subtotal": "",
+        "Pembayaran": "",
+        "Kembalian": ""
+    }])
+    output = BytesIO()
+    with pd.ExcelWriter(output, engine="openpyxl") as writer:
+        template.to_excel(writer, index=False, sheet_name="Template")
+    return output.getvalue()
 
-# ----------------- MENU -----------------
-menu = st.sidebar.radio("Menu", ["Kasir", "List Produk", "Laporan Penjualan"])
+# ==================== MENU ====================
+menu = st.sidebar.radio("Menu", ["Kasir", "Daftar Produk", "Tambah Produk", "Edit Produk", "Laporan Penjualan"])
 
-# ----------------- KASIR -----------------
+# ==================== KASIR ====================
 if menu == "Kasir":
-    st.subheader("Kasir")
+    st.header("💰 Kasir")
+    for p in st.session_state.products:
+        col1, col2, col3, col4 = st.columns([3,2,2,2])
+        with col1: st.write(p["Nama Produk"])
+        with col2: st.write(f"Rp{p['Harga Jual']:,}")
+        with col3: qty = st.number_input(f"Qty {p['Nama Produk']}", 1, 100, 1, key=f"qty_{p['Nama Produk']}")
+        with col4: 
+            if st.button("Tambah", key=f"add_{p['Nama Produk']}"):
+                add_to_cart(p, qty)
+                try: st.rerun()
+                except: st.experimental_rerun()
 
-    if not st.session_state.products:
-        st.warning("Belum ada produk. Tambahkan produk terlebih dahulu di menu List Produk.")
+    st.subheader("Keranjang")
+    if st.session_state.cart:
+        df_cart = pd.DataFrame(st.session_state.cart)
+        st.dataframe(df_cart)
+        total = sum(item["Subtotal"] for item in st.session_state.cart)
+        st.write(f"**Total: Rp{total:,}**")
+
+        payment = st.number_input("Nominal Pembayaran", min_value=0, step=1000)
+        if st.button("Checkout"):
+            if payment >= total:
+                kembalian = checkout(payment)
+                st.success(f"Transaksi berhasil! Kembalian: Rp{kembalian:,}")
+            else:
+                st.error("Nominal pembayaran kurang!")
     else:
-        produk_names = [p["Nama Produk"] for p in st.session_state.products]
-        selected_produk = st.selectbox("Pilih Produk", produk_names)
-        qty = st.number_input("Jumlah", min_value=1, value=1)
+        st.write("Keranjang kosong.")
 
-        if st.button("Tambah ke Keranjang"):
-            produk = next(p for p in st.session_state.products if p["Nama Produk"] == selected_produk)
-            st.session_state.cart.append(
-                {"SKU": produk["SKU"], "Nama Produk": produk["Nama Produk"], 
-                 "Harga Jual": produk["Harga Jual"], "Owner": produk["Owner"], "Qty": qty}
-            )
-            st.success(f"{qty} x {produk['Nama Produk']} ditambahkan ke keranjang")
+# ==================== DAFTAR PRODUK ====================
+elif menu == "Daftar Produk":
+    st.header("📦 Daftar Produk")
+    df_products = pd.DataFrame(st.session_state.products)
+    st.dataframe(df_products)
 
-        if st.session_state.cart:
-            st.subheader("Keranjang Belanja")
-            df_cart = pd.DataFrame(st.session_state.cart)
-            df_cart["Total"] = df_cart["Harga Jual"] * df_cart["Qty"]
-            st.dataframe(df_cart, use_container_width=True)
-            st.write("**Total Bayar: Rp**", df_cart["Total"].sum())
+    st.subheader("Hapus Produk")
+    if st.session_state.products:
+        product_names = [p["Nama Produk"] for p in st.session_state.products]
+        pilih = st.selectbox("Pilih produk yang ingin dihapus:", product_names)
+        if st.button("Hapus Produk"):
+            st.session_state.products = [p for p in st.session_state.products if p["Nama Produk"] != pilih]
+            try: st.rerun()
+            except: st.experimental_rerun()
 
-            pembayaran = st.number_input("Nominal Pembayaran", min_value=0, value=0)
-            if st.button("Checkout"):
-                total = df_cart["Total"].sum()
-                if pembayaran < total:
-                    st.error("Nominal pembayaran kurang!")
-                else:
-                    kembalian = pembayaran - total
-                    st.success(f"Transaksi berhasil! Kembalian: Rp{kembalian:,}")
-                    # Simpan laporan
-                    df_cart["Pembayaran"] = pembayaran
-                    df_cart["Kembalian"] = kembalian
-                    df_cart["Timestamp"] = pd.Timestamp.now()
-                    st.session_state.report.extend(df_cart.to_dict("records"))
-                    st.session_state.cart = []
-
-# ----------------- LIST PRODUK (CRUD) -----------------
-elif menu == "List Produk":
-    st.subheader("Daftar Produk")
-
-    df = pd.DataFrame(st.session_state.products)
-    if not df.empty:
-        st.dataframe(df, use_container_width=True)
-    else:
-        st.info("Belum ada produk yang ditambahkan.")
-
-    st.download_button(
-        label="Download Template Excel",
-        data=download_template_excel(),
-        file_name="template_produk.xlsx",
-        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-    )
-
-    st.divider()
-    st.write("### Tambah Produk Baru")
-    sku = st.text_input("SKU")
-    nama_produk = st.text_input("Nama Produk")
-    harga_jual = st.number_input("Harga Jual", min_value=0, value=0)
+# ==================== TAMBAH PRODUK ====================
+elif menu == "Tambah Produk":
+    st.header("➕ Tambah Produk")
+    nama = st.text_input("Nama Produk")
+    harga_jual = st.number_input("Harga Jual", min_value=0, step=1000)
+    harga_reseller = st.number_input("Harga Reseller", min_value=0, step=1000)
     owner = st.text_input("Owner")
 
-    if st.button("Tambah Produk"):
-        if sku and nama_produk:
-            st.session_state.products.append({
-                "SKU": sku, "Nama Produk": nama_produk, "Harga Jual": harga_jual, "Owner": owner
-            })
-            st.success(f"Produk '{nama_produk}' berhasil ditambahkan!")
-            st.rerun()
-        else:
-            st.error("SKU dan Nama Produk wajib diisi!")
+    if st.button("Simpan Produk Baru"):
+        st.session_state.products.append({
+            "Nama Produk": nama,
+            "Harga Jual": harga_jual,
+            "Harga Reseller": harga_reseller,
+            "Owner": owner
+        })
+        st.success("Produk berhasil ditambahkan!")
 
-    st.divider()
-    st.write("### Edit Produk")
-    produk_names = [p["Nama Produk"] for p in st.session_state.products]
-    if produk_names:
-        selected_edit = st.selectbox("Pilih produk untuk edit", produk_names)
-        produk_edit = next(p for p in st.session_state.products if p["Nama Produk"] == selected_edit)
+# ==================== EDIT PRODUK ====================
+elif menu == "Edit Produk":
+    st.header("✏️ Edit Produk")
+    if st.session_state.products:
+        product_names = [p["Nama Produk"] for p in st.session_state.products]
+        pilih = st.selectbox("Pilih produk yang ingin diedit:", product_names)
+        product = next(p for p in st.session_state.products if p["Nama Produk"] == pilih)
 
-        new_sku = st.text_input("SKU Baru", value=produk_edit["SKU"])
-        new_nama = st.text_input("Nama Produk Baru", value=produk_edit["Nama Produk"])
-        new_harga = st.number_input("Harga Jual Baru", min_value=0, value=produk_edit["Harga Jual"])
-        new_owner = st.text_input("Owner Baru", value=produk_edit["Owner"])
+        nama = st.text_input("Nama Produk", value=product["Nama Produk"])
+        harga_jual = st.number_input("Harga Jual", min_value=0, step=1000, value=product["Harga Jual"])
+        harga_reseller = st.number_input("Harga Reseller", min_value=0, step=1000, value=product["Harga Reseller"])
+        owner = st.text_input("Owner", value=product["Owner"])
 
-        if st.button("Update Produk"):
-            produk_edit.update({
-                "SKU": new_sku, "Nama Produk": new_nama, "Harga Jual": new_harga, "Owner": new_owner
+        if st.button("Simpan Perubahan"):
+            product.update({
+                "Nama Produk": nama,
+                "Harga Jual": harga_jual,
+                "Harga Reseller": harga_reseller,
+                "Owner": owner
             })
             st.success("Produk berhasil diupdate!")
-            st.rerun()
 
-    st.divider()
-    st.write("### Hapus Produk")
-    if produk_names:
-        selected_delete = st.selectbox("Pilih produk untuk hapus", produk_names, key="delete")
-        if st.button("Hapus Produk"):
-            st.session_state.products = [p for p in st.session_state.products if p["Nama Produk"] != selected_delete]
-            st.success(f"Produk '{selected_delete}' berhasil dihapus!")
-            st.rerun()
-
-# ----------------- LAPORAN PENJUALAN -----------------
+# ==================== LAPORAN ====================
 elif menu == "Laporan Penjualan":
-    st.subheader("Laporan Penjualan")
-    if st.session_state.report:
-        df_report = pd.DataFrame(st.session_state.report)
-        st.dataframe(df_report, use_container_width=True)
-        total_penjualan = df_report["Total"].sum()
-        st.write("**Total Penjualan: Rp**", total_penjualan)
+    st.header("📑 Laporan Penjualan")
+    if st.session_state.sales:
+        df_sales = pd.DataFrame(st.session_state.sales)
+        st.dataframe(df_sales)
 
-        # Grafik jumlah produk terjual
-        fig, ax = plt.subplots()
-        df_report.groupby("Nama Produk")["Qty"].sum().plot(kind="bar", ax=ax)
-        ax.set_ylabel("Jumlah Terjual")
-        st.pyplot(fig)
+        st.download_button("Download Laporan Excel", data=export_excel(st.session_state.sales),
+                           file_name="laporan_penjualan.xlsx")
 
-        # Download laporan Excel
-        buffer = BytesIO()
-        with pd.ExcelWriter(buffer, engine="xlsxwriter") as writer:
-            df_report.to_excel(writer, index=False, sheet_name="Laporan")
-        st.download_button("Download Laporan Excel", buffer.getvalue(), "laporan_penjualan.xlsx")
+        st.download_button("Download Template Excel", data=template_excel(),
+                           file_name="template_laporan.xlsx")
     else:
         st.info("Belum ada transaksi.")
