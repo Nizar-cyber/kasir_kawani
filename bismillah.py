@@ -30,45 +30,21 @@ except Exception as e:
     st.stop()
 
 # ================= HELPER FUNCTIONS =================
-def parse_rupiah(x):
-    """Konversi string 'Rp20.000' menjadi integer 20000"""
-    if pd.isna(x):
-        return 0
-    return int(str(x).replace("Rp", "").replace(".", "").strip())
-
-@st.cache_data(ttl=60)  # cache data 60 detik
 def load_produk():
     data = sheet_produk.get_all_records()
-    df = pd.DataFrame(data)
-    for col in ["Harga Reseller", "Harga Retail", "Potongan"]:
-        if col in df.columns:
-            df[col] = df[col].apply(parse_rupiah)
-    return df
+    return pd.DataFrame(data)
 
 def save_produk(df):
-    df_to_save = df.copy()
-    for col in ["Harga Reseller", "Harga Retail", "Potongan"]:
-        if col in df_to_save.columns:
-            df_to_save[col] = df_to_save[col].apply(lambda x: f"Rp{int(x):,}".replace(",", "."))
     sheet_produk.clear()
-    sheet_produk.update([df_to_save.columns.values.tolist()] + df_to_save.values.tolist())
+    sheet_produk.update([df.columns.values.tolist()] + df.values.tolist())
 
-@st.cache_data(ttl=60)
 def load_penjualan():
     data = sheet_penjualan.get_all_records()
-    df = pd.DataFrame(data)
-    for col in ["Harga Jual", "Subtotal"]:
-        if col in df.columns:
-            df[col] = df[col].apply(parse_rupiah)
-    return df
+    return pd.DataFrame(data)
 
 def save_penjualan(df):
-    df_to_save = df.copy()
-    for col in ["Harga Jual", "Subtotal"]:
-        if col in df_to_save.columns:
-            df_to_save[col] = df_to_save[col].apply(lambda x: f"Rp{int(x):,}".replace(",", "."))
     sheet_penjualan.clear()
-    sheet_penjualan.update([df_to_save.columns.values.tolist()] + df_to_save.values.tolist())
+    sheet_penjualan.update([df.columns.values.tolist()] + df.values.tolist())
 
 # ================= STREAMLIT APP =================
 st.set_page_config(page_title="Kasir Kawani", layout="wide")
@@ -92,7 +68,7 @@ if menu == "Kasir":
                 st.write(f"**{row['Nama Produk']}**")
                 st.caption(f"Owner: {row['Owner']}")
             with col2:
-                st.write(f"Harga Retail: Rp{row['Harga Retail']:,}")
+                st.write(f"Harga Retail: Rp{int(row['Harga Retail']):,}")
                 st.write(f"Stock: {row['Stock']}")
             with col3:
                 max_qty = int(row['Stock'])
@@ -106,14 +82,70 @@ if menu == "Kasir":
                     st.session_state.cart.append({
                         "Nama Produk": row['Nama Produk'],
                         "Owner": row['Owner'],
-                        "Harga Jual": row['Harga Retail'],
+                        "Harga Jual": int(row['Harga Retail']),
                         "Qty": qty,
-                        "Subtotal": row['Harga Retail'] * qty
+                        "Subtotal": int(row['Harga Retail']) * qty
                     })
-                    # langsung kurangi stock di sheet
-                    produk_df.at[idx, "Stock"] -= qty
-                    save_produk(produk_df)
-                    st.success(f"{row['Nama Produk']} ditambahkan ke keranjang! Stok berkurang {qty}.")
+                    st.success(f"{row['Nama Produk']} ditambahkan ke keranjang!")
+
+    # ================= KERANJANG =================
+    st.subheader("Keranjang")
+    if st.session_state.cart:
+        produk_df = load_produk()  # reload untuk cek stock terbaru
+        for i, item in enumerate(st.session_state.cart):
+            col1, col2, col3, col4, col5 = st.columns([3, 2, 2, 2, 1])
+            with col1:
+                st.write(item["Nama Produk"])
+            with col2:
+                st.write(f"Rp{item['Harga Jual']:,}")
+            with col3:
+                max_stock = produk_df.loc[produk_df["Nama Produk"]==item["Nama Produk"], "Stock"].values[0]
+                new_qty = st.number_input(f"Qty-{i}", 1, max_stock, value=item["Qty"], key=f"qty_cart_{i}")
+                st.session_state.cart[i]["Qty"] = new_qty
+                st.session_state.cart[i]["Subtotal"] = item["Harga Jual"] * new_qty
+            with col4:
+                st.write(f"Rp{st.session_state.cart[i]['Subtotal']:,}")
+            with col5:
+                if st.button("❌", key=f"del_cart_{i}"):
+                    st.session_state.cart.pop(i)
+                    st.experimental_rerun()
+
+        total = sum(item["Subtotal"] for item in st.session_state.cart)
+        st.write(f"### Total: Rp{total:,}")
+
+        bayar = st.number_input("Nominal Pembayaran", min_value=0, step=1000)
+        if st.button("Checkout"):
+            if bayar >= total:
+                kembalian = bayar - total
+                st.success(f"Transaksi berhasil! Kembalian Rp{kembalian:,}")
+
+                # Simpan ke laporan penjualan & update stock
+                penjualan_df = load_penjualan()
+                produk_df = load_produk()
+
+                for item in st.session_state.cart:
+                    new_row = {
+                        "Waktu": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                        "Nama Produk": item["Nama Produk"],
+                        "Owner": item["Owner"],
+                        "Harga Jual": item["Harga Jual"],
+                        "Qty": item["Qty"],
+                        "Subtotal": item["Subtotal"]
+                    }
+                    penjualan_df = pd.concat([penjualan_df, pd.DataFrame([new_row])], ignore_index=True)
+
+                    # Update stock
+                    idx_produk = produk_df[produk_df["Nama Produk"] == item["Nama Produk"]].index[0]
+                    produk_df.at[idx_produk, "Stock"] = int(produk_df.at[idx_produk, "Stock"]) - item["Qty"]
+
+                save_penjualan(penjualan_df)
+                save_produk(produk_df)
+
+                st.session_state.cart = []
+            else:
+                st.error("Nominal pembayaran kurang!")
+    else:
+        st.info("Keranjang kosong.")
 
 # ================= DAFTAR PRODUK =================
 elif menu == "Daftar Produk":
@@ -139,18 +171,18 @@ elif menu == "Tambah Produk":
 
     nama = st.text_input("Nama Produk")
     owner = st.text_input("Owner")
-    harga_reseller = st.text_input("Harga Reseller (contoh: Rp8.000)")
-    harga_retail = st.text_input("Harga Retail (contoh: Rp10.000)")
-    potongan = st.text_input("Potongan (contoh: Rp2000)")
+    harga_reseller = st.number_input("Harga Reseller", min_value=0)
+    harga_retail = st.number_input("Harga Retail", min_value=0)
+    potongan = st.number_input("Potongan", min_value=0)
     stock = st.number_input("Stock", min_value=0)
 
     if st.button("Simpan Produk"):
         new_row = {
-            "Owner": owner,
-            "Nama Produk": nama,
-            "Harga Reseller": parse_rupiah(harga_reseller),
-            "Harga Retail": parse_rupiah(harga_retail),
-            "Potongan": parse_rupiah(potongan),
+            "Owner": owner, 
+            "Nama Produk": nama, 
+            "Harga Reseller": harga_reseller, 
+            "Harga Retail": harga_retail, 
+            "Potongan": potongan,
             "Stock": stock
         }
         produk_df = pd.concat([produk_df, pd.DataFrame([new_row])], ignore_index=True)
@@ -168,16 +200,54 @@ elif menu == "Edit Produk":
 
         nama = st.text_input("Nama Produk", row["Nama Produk"])
         owner = st.text_input("Owner", row["Owner"])
-        harga_reseller = st.text_input("Harga Reseller", f"Rp{row['Harga Reseller']:,}".replace(",", "."))
-        harga_retail = st.text_input("Harga Retail", f"Rp{row['Harga Retail']:,}".replace(",", "."))
-        potongan = st.text_input("Potongan", f"Rp{row['Potongan']:,}".replace(",", "."))
+        harga_reseller = st.number_input("Harga Reseller", min_value=0, value=int(row["Harga Reseller"]))
+        harga_retail = st.number_input("Harga Retail", min_value=0, value=int(row["Harga Retail"]))
+        potongan = st.number_input("Potongan", min_value=0, value=int(row["Potongan"]))
         stock = st.number_input("Stock", min_value=0, value=int(row["Stock"]))
 
         if st.button("Update Produk"):
             idx_produk = produk_df[produk_df["Nama Produk"] == pilihan].index[0]
             produk_df.at[idx_produk, "Nama Produk"] = nama
             produk_df.at[idx_produk, "Owner"] = owner
-            produk_df.at[idx_produk, "Harga Reseller"] = parse_rupiah(harga_reseller)
-            produk_df.at[idx_produk, "Harga Retail"] = parse_rupiah(harga_retail)
-            produk_df.at[idx_produk, "Potongan"] = parse_rupiah(potongan)
+            produk_df.at[idx_produk, "Harga Reseller"] = harga_reseller
+            produk_df.at[idx_produk, "Harga Retail"] = harga_retail
+            produk_df.at[idx_produk, "Potongan"] = potongan
             produk_df.at[idx_produk, "Stock"] = stock
+            save_produk(produk_df)
+            st.success("Produk berhasil diupdate.")
+
+# ================= HAPUS PRODUK =================
+elif menu == "Hapus Produk":
+    st.title("🗑️ Hapus Produk")
+    produk_df = load_produk()
+
+    if not produk_df.empty:
+        pilihan = st.selectbox("Pilih Produk yang ingin dihapus", produk_df["Nama Produk"].unique())
+        if st.button("Hapus"):
+            produk_df = produk_df[produk_df["Nama Produk"] != pilihan]
+            save_produk(produk_df)
+            st.success(f"Produk '{pilihan}' berhasil dihapus.")
+
+# ================= LAPORAN PENJUALAN =================
+elif menu == "Laporan Penjualan":
+    st.title("📊 Laporan Penjualan")
+    laporan_df = load_penjualan()
+    st.dataframe(laporan_df)
+
+    if not laporan_df.empty:
+        # Export Excel
+        output = BytesIO()
+        with pd.ExcelWriter(output, engine="openpyxl") as writer:
+            laporan_df.to_excel(writer, index=False, sheet_name="Laporan")
+        st.download_button("Download Excel", data=output.getvalue(), file_name="laporan_penjualan.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+
+        # Export PDF
+        pdf_output = BytesIO()
+        doc = SimpleDocTemplate(pdf_output, pagesize=A4)
+        styles = getSampleStyleSheet()
+        table_data = [laporan_df.columns.tolist()] + laporan_df.values.tolist()
+        table = Table(table_data)
+        table.setStyle(TableStyle([("BACKGROUND", (0,0), (-1,0), colors.grey),
+                                   ("GRID", (0,0), (-1,-1), 1, colors.black)]))
+        doc.build([Paragraph("Laporan Penjualan", styles["Title"]), table])
+        st.download_button("Download PDF", data=pdf_output.getvalue(), file_name="laporan_penjualan.pdf", mime="application/pdf")
