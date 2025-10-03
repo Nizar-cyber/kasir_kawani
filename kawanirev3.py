@@ -16,8 +16,8 @@ CLIENT = gspread.authorize(CREDS)
 
 # Ganti dengan ID Google Sheet kamu
 SHEET_ID = "1ksV8WUxNLleiyAv9FbpLUqgIQ3Njt-_HNTshfSEDVS4"
-sheet_produk = CLIENT.open_by_key("1ksV8WUxNLleiyAv9FbpLUqgIQ3Njt-_HNTshfSEDVS4").worksheet("Produk")
-sheet_penjualan = CLIENT.open_by_key("1ksV8WUxNLleiyAv9FbpLUqgIQ3Njt-_HNTshfSEDVS4").worksheet("Penjualan")
+sheet_produk = CLIENT.open_by_key(SHEET_ID).worksheet("Produk")
+sheet_penjualan = CLIENT.open_by_key(SHEET_ID).worksheet("Penjualan")
 
 # ================= HELPER FUNCTIONS =================
 def load_produk():
