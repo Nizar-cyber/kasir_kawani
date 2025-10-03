@@ -10,22 +10,6 @@ from reportlab.lib.styles import getSampleStyleSheet
 from datetime import datetime
 
 # ================= GOOGLE SHEET SETUP =================
-import streamlit as st
-import pandas as pd
-import gspread
-from oauth2client.service_account import ServiceAccountCredentials
-from io import BytesIO
-from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph
-from reportlab.lib import colors
-from reportlab.lib.pagesizes import A4
-from reportlab.lib.styles import getSampleStyleSheet
-from datetime import datetime
-
-# ================= GOOGLE SHEET SETUP =================
-import gspread
-from oauth2client.service_account import ServiceAccountCredentials
-import streamlit as st
-
 SCOPE = [
     "https://spreadsheets.google.com/feeds",
     "https://www.googleapis.com/auth/spreadsheets",
@@ -44,8 +28,6 @@ try:
 except Exception as e:
     st.error(f"Gagal konek ke Google Sheet. Pastikan credential JSON benar dan sheet sudah dishare ke service account. Error: {e}")
     st.stop()
-
-
 
 # ================= HELPER FUNCTIONS =================
 def load_produk():
@@ -95,7 +77,7 @@ if menu == "Kasir":
                     st.session_state.cart.append({
                         "Nama Produk": row['Nama Produk'],
                         "Owner": row['Owner'],
-                        "Harga Jual": row['Harga Retail'],   # Pakai Harga Retail
+                        "Harga Jual": row['Harga Retail'],
                         "Qty": qty,
                         "Subtotal": row['Harga Retail'] * qty
                     })
@@ -115,7 +97,7 @@ if menu == "Kasir":
                 kembalian = bayar - total
                 st.success(f"Transaksi berhasil! Kembalian Rp{int(kembalian):,}")
 
-                # Simpan ke laporan penjualan
+                # Simpan ke laporan penjualan & update stock
                 penjualan_df = load_penjualan()
                 for item in st.session_state.cart:
                     new_row = {
@@ -128,9 +110,9 @@ if menu == "Kasir":
                     }
                     penjualan_df = pd.concat([penjualan_df, pd.DataFrame([new_row])], ignore_index=True)
 
-                    # Kurangi stock
-                    idx = produk_df[produk_df["Nama Produk"] == item["Nama Produk"]].index[0]
-                    produk_df.at[idx, "Stock"] = int(produk_df.at[idx, "Stock"]) - item["Qty"]
+                    # Update stock produk
+                    idx_produk = produk_df[produk_df["Nama Produk"] == item["Nama Produk"]].index[0]
+                    produk_df.at[idx_produk, "Stock"] = int(produk_df.at[idx_produk, "Stock"]) - item["Qty"]
 
                 save_penjualan(penjualan_df)
                 save_produk(produk_df)
@@ -197,13 +179,13 @@ elif menu == "Edit Produk":
         stock = st.number_input("Stock", min_value=0, value=int(row["Stock"]))
 
         if st.button("Update Produk"):
-            idx = produk_df[produk_df["Nama Produk"] == pilihan].index[0]
-            produk_df.at[idx, "Nama Produk"] = nama
-            produk_df.at[idx, "Owner"] = owner
-            produk_df.at[idx, "Harga Reseller"] = harga_reseller
-            produk_df.at[idx, "Harga Retail"] = harga_retail
-            produk_df.at[idx, "Potongan"] = potongan
-            produk_df.at[idx, "Stock"] = stock
+            idx_produk = produk_df[produk_df["Nama Produk"] == pilihan].index[0]
+            produk_df.at[idx_produk, "Nama Produk"] = nama
+            produk_df.at[idx_produk, "Owner"] = owner
+            produk_df.at[idx_produk, "Harga Reseller"] = harga_reseller
+            produk_df.at[idx_produk, "Harga Retail"] = harga_retail
+            produk_df.at[idx_produk, "Potongan"] = potongan
+            produk_df.at[idx_produk, "Stock"] = stock
             save_produk(produk_df)
             st.success("Produk berhasil diupdate.")
 
@@ -238,6 +220,7 @@ elif menu == "Laporan Penjualan":
         styles = getSampleStyleSheet()
         table_data = [laporan_df.columns.tolist()] + laporan_df.values.tolist()
         table = Table(table_data)
-        table.setStyle(TableStyle([("BACKGROUND", (0,0), (-1,0), colors.grey),("GRID", (0,0), (-1,-1), 1, colors.black)]))
+        table.setStyle(TableStyle([("BACKGROUND", (0,0), (-1,0), colors.grey),
+                                   ("GRID", (0,0), (-1,-1), 1, colors.black)]))
         doc.build([Paragraph("Laporan Penjualan", styles["Title"]), table])
         st.download_button("Download PDF", data=pdf_output.getvalue(), file_name="laporan_penjualan.pdf", mime="application/pdf")
