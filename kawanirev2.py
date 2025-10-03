@@ -1,5 +1,6 @@
 import streamlit as st
 import pandas as pd
+from datetime import datetime
 from io import BytesIO
 from reportlab.lib.pagesizes import A4
 from reportlab.pdfgen import canvas
@@ -8,132 +9,205 @@ st.set_page_config(page_title="Kasir App", layout="wide")
 
 # ----------------- SESSION STATE -----------------
 if "products" not in st.session_state:
-    st.session_state.products = [
-        {"owner": "Toko A", "nama": "Produk A", "harga_retail": 10000, "potongan": 1000, "stok": 50},
-        {"owner": "Toko B", "nama": "Produk B", "harga_retail": 20000, "potongan": 2000, "stok": 30},
-        {"owner": "Toko C", "nama": "Produk C", "harga_retail": 15000, "potongan": 1500, "stok": 40},
-        {"owner": "Toko D", "nama": "Produk D", "harga_retail": 30000, "potongan": 2500, "stok": 20},
-    ]
-
+    st.session_state.products = []
 if "cart" not in st.session_state:
     st.session_state.cart = []
+if "laporan" not in st.session_state:
+    st.session_state.laporan = []
 
-if "history" not in st.session_state:
-    st.session_state.history = []  # untuk laporan penjualan
+# ----------------- EXPORT FUNCTIONS -----------------
+def export_excel(df):
+    output = BytesIO()
+    with pd.ExcelWriter(output, engine="openpyxl") as writer:
+        df.to_excel(writer, index=False, sheet_name="Laporan Penjualan")
+    return output.getvalue()
 
-# ----------------- FUNGSI -----------------
-def create_pdf(cart_df, total):
-    buffer = BytesIO()
-    c = canvas.Canvas(buffer, pagesize=A4)
+def export_pdf(df):
+    output = BytesIO()
+    c = canvas.Canvas(output, pagesize=A4)
     width, height = A4
-
-    c.setFont("Helvetica-Bold", 14)
-    c.drawString(200, height - 50, "Struk Pembelian")
-
     c.setFont("Helvetica", 10)
-    y = height - 100
-    for _, row in cart_df.iterrows():
-        line = f"{row['nama']} ({row['qty']} x {row['harga_final']}) = {row['subtotal']}"
-        c.drawString(50, y, line)
-        y -= 20
-    c.drawString(50, y - 30, f"Total: Rp {total:,}")
-    c.save()
+    text = c.beginText(40, height - 40)
+    text.textLine("Laporan Penjualan")
+    text.textLine("")
 
-    buffer.seek(0)
-    return buffer
+    for i, row in df.iterrows():
+        line = f"{row['Timestamp']} | {row['Owner']} | {row['Nama Produk']} | Qty:{row['Qty']} | Rp{row['Subtotal']}"
+        text.textLine(line)
+    c.drawText(text)
+    c.showPage()
+    c.save()
+    return output.getvalue()
 
 def download_template():
-    template = pd.DataFrame(columns=["owner", "nama", "harga_retail", "potongan", "stok"])
-    towrite = BytesIO()
-    template.to_excel(towrite, index=False)
-    towrite.seek(0)
-    return towrite
+    df_template = pd.DataFrame({
+        "Owner": ["contoh_owner"],
+        "Nama Produk": ["Produk Contoh"],
+        "Harga Retail": [10000],
+        "Potongan": [1000],
+        "Stock": [10]
+    })
+    output = BytesIO()
+    with pd.ExcelWriter(output, engine="openpyxl") as writer:
+        df_template.to_excel(writer, index=False, sheet_name="Template Produk")
+    return output.getvalue()
 
-# ----------------- TAMPILAN -----------------
-st.title("🛒 Kasir")
+# ----------------- SIDEBAR MENU -----------------
+menu = st.sidebar.radio(
+    "Menu",
+    ["Kasir", "Daftar Produk", "Tambah Produk", "Edit Produk", "Laporan Penjualan"]
+)
 
-# === Grid Produk (4 kolom per baris) ===
-st.subheader("Daftar Produk")
-cols = st.columns(4)
-for i, product in enumerate(st.session_state.products):
-    col = cols[i % 4]
-    with col:
-        with st.container():
-            st.markdown(f"**{product['nama']}**")
-            st.write(f"👤 Owner: {product['owner']}")
-            st.write(f"💰 Harga: Rp{product['harga_retail']:,}")
-            st.write(f"🔖 Potongan: Rp{product['potongan']:,}")
-            st.write(f"📦 Stok: {product['stok']}")
-            qty = st.number_input(f"Qty_{i}", min_value=1, max_value=product["stok"], value=1, key=f"qty_{i}")
-            if st.button(f"Tambah {product['nama']}", key=f"btn_{i}"):
-                harga_final = product["harga_retail"] - product["potongan"]
-                subtotal = harga_final * qty
-                st.session_state.cart.append({
-                    "owner": product["owner"],
-                    "nama": product["nama"],
-                    "harga_retail": product["harga_retail"],
-                    "potongan": product["potongan"],
-                    "harga_final": harga_final,
-                    "qty": qty,
-                    "subtotal": subtotal
+# ----------------- MENU KASIR -----------------
+if menu == "Kasir":
+    st.title("💰 Kasir")
+
+    if st.session_state.products:
+        cols = st.columns(4)  # tampilkan grid 4 kolom
+        for idx, product in enumerate(st.session_state.products):
+            with cols[idx % 4]:
+                st.markdown(f"**{product['Nama Produk']}**")
+                st.write(f"Owner: {product['Owner']}")
+                st.write(f"Harga: Rp{product['Harga Retail']}")
+                st.write(f"Stock: {product['Stock']}")
+                qty = st.number_input(f"Qty {product['Nama Produk']}", min_value=0, max_value=product["Stock"], key=f"qty_{idx}")
+                if st.button(f"Tambah {product['Nama Produk']}", key=f"btn_{idx}"):
+                    if qty > 0:
+                        st.session_state.cart.append({
+                            "Owner": product["Owner"],
+                            "Nama Produk": product["Nama Produk"],
+                            "Harga Retail": product["Harga Retail"],
+                            "Potongan": product["Potongan"],
+                            "Qty": qty
+                        })
+                        st.success(f"{qty} {product['Nama Produk']} ditambahkan ke keranjang!")
+
+    if st.session_state.cart:
+        st.subheader("🛒 Keranjang Belanja")
+        df_cart = pd.DataFrame(st.session_state.cart)
+        df_cart["Subtotal"] = df_cart["Harga Retail"] * df_cart["Qty"] - df_cart["Potongan"] * df_cart["Qty"]
+        st.table(df_cart)
+        total = df_cart["Subtotal"].sum()
+        st.write(f"### Total: Rp{total}")
+
+        if st.button("Checkout"):
+            timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            laporan = []
+            for item in st.session_state.cart:
+                # kurangi stock
+                for p in st.session_state.products:
+                    if p["Nama Produk"] == item["Nama Produk"] and p["Owner"] == item["Owner"]:
+                        p["Stock"] -= item["Qty"]
+
+                laporan.append({
+                    "Owner": item["Owner"],
+                    "Nama Produk": item["Nama Produk"],
+                    "Harga Retail": item["Harga Retail"],
+                    "Potongan": item["Potongan"],
+                    "Qty": item["Qty"],
+                    "Subtotal": item["Harga Retail"] * item["Qty"] - item["Potongan"] * item["Qty"],
+                    "Timestamp": timestamp
                 })
-                st.success(f"{product['nama']} ditambahkan ke keranjang!")
 
-    if (i + 1) % 4 == 0 and i != len(st.session_state.products) - 1:
-        cols = st.columns(4)
+            df_laporan = pd.DataFrame(laporan)
+            st.session_state.laporan.append(df_laporan)
+            st.session_state.cart = []
+            st.success("Checkout berhasil!")
 
-# === Keranjang ===
-if st.session_state.cart:
-    st.subheader("Keranjang Belanja")
-    cart_df = pd.DataFrame(st.session_state.cart)
-    st.dataframe(cart_df)
+# ----------------- MENU DAFTAR PRODUK -----------------
+elif menu == "Daftar Produk":
+    st.title("📦 Daftar Produk")
+    if st.session_state.products:
+        df_produk = pd.DataFrame(st.session_state.products)
+        st.table(df_produk)
+    else:
+        st.info("Belum ada produk.")
 
-    total = cart_df["subtotal"].sum()
-    st.write(f"### 💰 Total: Rp {total:,}")
+# ----------------- MENU TAMBAH PRODUK -----------------
+elif menu == "Tambah Produk":
+    st.title("➕ Tambah Produk")
 
-    # Checkout
-    if st.button("✅ Checkout"):
-        # simpan transaksi ke history
-        st.session_state.history.append(cart_df.to_dict("records"))
-        # kurangi stok
-        for item in st.session_state.cart:
-            for p in st.session_state.products:
-                if p["nama"] == item["nama"] and p["owner"] == item["owner"]:
-                    p["stok"] -= item["qty"]
-        st.session_state.cart = []
-        st.success("Checkout berhasil, stok sudah berkurang!")
+    with st.form("form_tambah"):
+        owner = st.text_input("Owner")
+        nama_produk = st.text_input("Nama Produk")
+        harga = st.number_input("Harga Retail", min_value=0)
+        potongan = st.number_input("Potongan", min_value=0)
+        stock = st.number_input("Stock", min_value=0)
+        submitted = st.form_submit_button("Tambah")
 
-    # Download PDF
-    pdf_file = create_pdf(cart_df, total)
-    st.download_button(
-        "🧾 Download Struk (PDF)",
-        data=pdf_file,
-        file_name="struk.pdf",
-        mime="application/pdf"
-    )
-
-# === Download Template Produk & Upload Produk ===
-st.subheader("📥 Download / Upload Produk")
-col1, col2 = st.columns(2)
-
-with col1:
-    st.download_button(
-        label="📥 Download Template Produk (Excel)",
-        data=download_template(),
-        file_name="template_produk.xlsx",
-        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-    )
-
-with col2:
-    uploaded_file = st.file_uploader("📤 Upload Produk (Excel)", type=["xlsx"])
-    if uploaded_file:
-        df_upload = pd.read_excel(uploaded_file)
-        for _, row in df_upload.iterrows():
+        if submitted:
             st.session_state.products.append({
-                "owner": row["owner"],
-                "nama": row["nama"],
-                "harga_retail": row["harga_retail"],
-                "potongan": row["potongan"],
-                "stok": row["stok"]
+                "Owner": owner,
+                "Nama Produk": nama_produk,
+                "Harga Retail": harga,
+                "Potongan": potongan,
+                "Stock": stock
             })
-        st.success("Produk berhasil ditambahkan dari Excel!")
+            st.success(f"Produk {nama_produk} berhasil ditambahkan!")
+
+    # upload Excel
+    st.subheader("📤 Upload Produk dari Excel")
+    file = st.file_uploader("Upload file Excel", type=["xlsx"])
+    if file:
+        df_upload = pd.read_excel(file)
+        st.session_state.products.extend(df_upload.to_dict(orient="records"))
+        st.success("Produk dari Excel berhasil ditambahkan!")
+
+    # download template
+    st.subheader("📥 Download Template Excel")
+    st.download_button(
+        label="Download Template Produk",
+        data=download_template(),
+        file_name="template_produk.xlsx"
+    )
+
+# ----------------- MENU EDIT PRODUK -----------------
+# ----------------- MENU EDIT PRODUK -----------------
+elif menu == "Edit Produk":
+    st.title("✏️ Edit Produk")
+    if st.session_state.products:
+        pilihan = [p["Nama Produk"] for p in st.session_state.products]
+        pilih = st.selectbox("Pilih Produk", pilihan)
+        produk = next(p for p in st.session_state.products if p["Nama Produk"] == pilih)
+
+        with st.form("form_edit"):
+            produk["Owner"] = st.text_input("Owner", produk["Owner"])
+            produk["Nama Produk"] = st.text_input("Nama Produk", produk["Nama Produk"])
+            produk["Harga Retail"] = st.number_input("Harga Retail", min_value=0, value=produk["Harga Retail"])
+            produk["Potongan"] = st.number_input("Potongan", min_value=0, value=produk["Potongan"])
+            produk["Stock"] = st.number_input("Stock", min_value=0, value=produk["Stock"])
+            col1, col2 = st.columns(2)
+
+            with col1:
+                updated = st.form_submit_button("Update")
+            with col2:
+                deleted = st.form_submit_button("Hapus Produk")
+
+            if updated:
+                st.success("Produk berhasil diupdate!")
+            if deleted:
+                st.session_state.products = [p for p in st.session_state.products if p["Nama Produk"] != pilih]
+                st.warning(f"Produk {pilih} telah dihapus!")
+    else:
+        st.info("Belum ada produk untuk diedit.")
+
+# ----------------- MENU LAPORAN PENJUALAN -----------------
+elif menu == "Laporan Penjualan":
+    st.title("📑 Laporan Penjualan")
+    if st.session_state.laporan:
+        df_laporan_all = pd.concat(st.session_state.laporan, ignore_index=True)
+        st.dataframe(df_laporan_all)
+
+        st.download_button(
+            label="Download Excel",
+            data=export_excel(df_laporan_all),
+            file_name="laporan_penjualan.xlsx"
+        )
+
+        st.download_button(
+            label="Download PDF",
+            data=export_pdf(df_laporan_all),
+            file_name="laporan_penjualan.pdf"
+        )
+    else:
+        st.info("Belum ada transaksi.")
