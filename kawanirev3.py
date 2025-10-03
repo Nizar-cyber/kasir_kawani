@@ -10,14 +10,39 @@ from reportlab.lib.styles import getSampleStyleSheet
 from datetime import datetime
 
 # ================= GOOGLE SHEET SETUP =================
-SCOPE = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
-CREDS = ServiceAccountCredentials.from_json_keyfile_name("kasirsella-f50160d2380d.json", SCOPE)
-CLIENT = gspread.authorize(CREDS)
+import streamlit as st
+import pandas as pd
+import gspread
+from oauth2client.service_account import ServiceAccountCredentials
+from io import BytesIO
+from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph
+from reportlab.lib import colors
+from reportlab.lib.pagesizes import A4
+from reportlab.lib.styles import getSampleStyleSheet
+from datetime import datetime
 
-# Ganti dengan ID Google Sheet kamu
-SHEET_ID = "1ksV8WUxNLleiyAv9FbpLUqgIQ3Njt-_HNTshfSEDVS4"
-sheet_produk = CLIENT.open_by_key(SHEET_ID).worksheet("Produk")
-sheet_penjualan = CLIENT.open_by_key(SHEET_ID).worksheet("Penjualan")
+# ================= GOOGLE SHEET SETUP =================
+SCOPE = [
+    "https://spreadsheets.google.com/feeds",
+    "https://www.googleapis.com/auth/spreadsheets",
+    "https://www.googleapis.com/auth/drive"
+]
+
+try:
+    CREDS = ServiceAccountCredentials.from_json_keyfile_name(
+        "kasirsella-f50160d2380d.json", SCOPE
+    )
+    CLIENT = gspread.authorize(CREDS)
+
+    # ID Google Sheet "Kasir Sella"
+    SHEET_ID = "1ksV8WUxNLleiyAv9FbpLUqgIQ3Njt-_HNTshfSEDVS4"
+    sheet_produk = CLIENT.open_by_key(SHEET_ID).worksheet("Produk")
+    sheet_penjualan = CLIENT.open_by_key(SHEET_ID).worksheet("Penjualan")
+
+except Exception as e:
+    st.error(f"Gagal konek ke Google Sheet. Pastikan credential JSON benar dan sheet sudah dishare ke service account. Error: {e}")
+    st.stop()
+
 
 # ================= HELPER FUNCTIONS =================
 def load_produk():
