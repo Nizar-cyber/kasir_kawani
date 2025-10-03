@@ -115,62 +115,64 @@ if menu == "Kasir":
                         })
                     st.success(f"{row['Nama Produk']} ditambahkan ke keranjang!")
 
-    # Tampilkan keranjang
-    st.subheader("Keranjang")
-    if st.session_state.cart:
-        df_cart = pd.DataFrame(st.session_state.cart)
-        st.dataframe(df_cart)
+# ================= Tampilkan keranjang =================
+st.subheader("Keranjang")
+if st.session_state.cart:
+    df_cart = pd.DataFrame(st.session_state.cart)
+    st.dataframe(df_cart)
 
-        # Edit & hapus keranjang
-        hapus_index = None
-for i, item in enumerate(st.session_state.cart):
-    col1, col2, col3 = st.columns([3,2,1])
-    with col1:
-        st.write(f"{item['Nama Produk']} ({item['Owner']})")
-    with col2:
-        new_qty = st.number_input(f"Edit Qty-{i}", 1, 1000, item['Qty'], key=f"editqty{i}")
-        st.session_state.cart[i]['Qty'] = new_qty
-        st.session_state.cart[i]['Subtotal'] = new_qty * item['Harga Jual']
-    with col3:
-        if st.button("Hapus", key=f"hapus{i}"):
-            hapus_index = i
+    hapus_index = None
+    for i, item in enumerate(st.session_state.cart):
+        col1, col2, col3 = st.columns([3,2,1])
+        with col1:
+            st.write(f"{item['Nama Produk']} ({item['Owner']})")
+        with col2:
+            new_qty = st.number_input(f"Edit Qty-{i}", 1, 1000, item['Qty'], key=f"editqty{i}")
+            st.session_state.cart[i]['Qty'] = new_qty
+            st.session_state.cart[i]['Subtotal'] = new_qty * item['Harga Jual']
+        with col3:
+            if st.button("Hapus", key=f"hapus{i}"):
+                hapus_index = i
 
-if hapus_index is not None:
-    st.session_state.cart.pop(hapus_index)
-    st.experimental_rerun()
+    if hapus_index is not None:
+        st.session_state.cart.pop(hapus_index)
+        st.experimental_rerun()
 
+    # Hitung total & input pembayaran
+    total = sum([x["Subtotal"] for x in st.session_state.cart])
+    st.write(f"### Total: Rp{int(total):,}")
 
-        total = sum([x["Subtotal"] for x in st.session_state.cart])
-        st.write(f"### Total: Rp{int(total):,}")
+    bayar = st.number_input("Nominal Pembayaran", min_value=0, step=1000)
+    if st.button("Checkout"):
+        if bayar >= total:
+            kembalian = bayar - total
+            st.success(f"Transaksi berhasil! Kembalian Rp{kembalian:,}")
 
-        bayar = st.number_input("Nominal Pembayaran", min_value=0, step=1000)
-        if st.button("Checkout"):
-            if bayar >= total:
-                kembalian = bayar - total
-                st.success(f"Transaksi berhasil! Kembalian Rp{kembalian:,}")
+            # Simpan ke laporan penjualan & update stock
+            for item in st.session_state.cart:
+                new_row = {
+                    "Waktu": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                    "Nama Produk": item["Nama Produk"],
+                    "Owner": item["Owner"],
+                    "Harga Jual": item["Harga Jual"],
+                    "Qty": item["Qty"],
+                    "Subtotal": item["Subtotal"]
+                }
+                st.session_state.penjualan_df = pd.concat(
+                    [st.session_state.penjualan_df, pd.DataFrame([new_row])], ignore_index=True
+                )
 
-                # Simpan ke laporan penjualan & update stock
-                for item in st.session_state.cart:
-                    new_row = {
-                        "Waktu": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                        "Nama Produk": item["Nama Produk"],
-                        "Owner": item["Owner"],
-                        "Harga Jual": item["Harga Jual"],
-                        "Qty": item["Qty"],
-                        "Subtotal": item["Subtotal"]
-                    }
-                    st.session_state.penjualan_df = pd.concat([st.session_state.penjualan_df, pd.DataFrame([new_row])], ignore_index=True)
+                # Update stock
+                idx_produk = produk_df[produk_df["Nama Produk"] == item["Nama Produk"]].index[0]
+                produk_df.at[idx_produk, "Stock"] = int(produk_df.at[idx_produk, "Stock"]) - item["Qty"]
 
-                    # Update stock produk
-                    idx_produk = produk_df[produk_df["Nama Produk"] == item["Nama Produk"]].index[0]
-                    produk_df.at[idx_produk, "Stock"] = int(produk_df.at[idx_produk, "Stock"]) - item["Qty"]
+            save_penjualan(st.session_state.penjualan_df)
+            save_produk(produk_df)
+            st.session_state.cart = []
+            st.experimental_rerun()
+        else:
+            st.error("Nominal pembayaran kurang!")
 
-                save_penjualan(st.session_state.penjualan_df)
-                save_produk(produk_df)
-                st.session_state.cart = []
-                st.experimental_rerun()
-            else:
-                st.error("Nominal pembayaran kurang!")
 
 # ================= DAFTAR PRODUK =================
 elif menu == "Daftar Produk":
